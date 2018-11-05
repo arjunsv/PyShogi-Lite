@@ -1,19 +1,34 @@
 import os
 
 def input_to_coords(user_input):
-    """ Convert string input into src and dest coordinate pair
+    """ Parse user input into src and dest coordinate pair
         Returns a list of two coordinate tuples
     """
     split_input = user_input.split(" ")
-    # command = split_input[0]
     pos_1, pos_2 = split_input[1], split_input[2]
-    return (pos_to_cord(pos_1), pos_to_cord(pos_2))
+    return (pos_to_coord(pos_1), pos_to_coord(pos_2))
+
+def input_to_commands(user_input):
+    """ Parse user input into move or drop command and promote command
+    """
+    split_input = user_input.split(" ")
+    command = split_input[0]
+    if len(split_input) == 4:
+        return (command, split_input[3])
+    return (command, "")
 
 
-def pos_to_cord(pos_1):
+def pos_to_coord(pos_1):
     """ Convert locs to pair of coordinate tuples
     """
     return (ord(pos_1[0]) - ord('a'), int(pos_1[1]) - 1)
+
+def add_coords(player, coord_1, coord_2):
+    """ Adds two coordinate pairs by row, col values
+    """
+    if player == "lower":
+        return (coord_1[0] + coord_2[0], coord_1[1] + coord_2[1])
+    return (coord_1[0] + coord_2[0], coord_2[1] - coord_1[1])
 
 
 def _stringify_square(sq):
