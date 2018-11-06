@@ -1,32 +1,32 @@
 from utils import input_to_coords, input_to_commands, stringify_board, add_coords
-import os
+import os, sys
 import time
+import traceback
+
 
 class Piece:
 
-    def __init__(self, player, coords, board):
+    def __init__(self, player, coords, blockable):
         """ Initializes piece
         """
         self.player = player
+        self.blockable = blockable
         self.coords = coords
 
         if self.player == "lower":
             self.icon = self.icon.lower()
 
 
-    def is_valid_promote(self):
-        """ Check if the piece is eligible for promotion based on its position
-        """
-        return self.coords[1] == 0 or self.coords[1] == 4
-
-
 class King(Piece):
 
-    icon = "K"
-    moves = [(-1, 1), (0, 1), 
-         (1, 1), (1, 0), 
-         (1, -1), (0, -1), 
-         (-1, -1), (-1, 0)]
+    def __init__(self, player, coords):
+        self.icon = "K"
+        super().__init__(player, coords, False)
+        self.blockable_moves_sets = []
+        self.unblockable_moves = [(-1, 1), (0, 1), 
+                                  (1, 1), (1, 0), 
+                                  (1, -1), (0, -1), 
+                                  (-1, -1), (-1, 0)]
 
     def promote(self):
         print("King cannot be promoted.")
@@ -34,10 +34,13 @@ class King(Piece):
 
 class GoldGeneral(Piece):
 
-    icon = "G"
-    moves = [(-1, 1), (0, 1), 
-             (1, 1), (1, 0), 
-             (0, -1), (-1, 0)]
+    def __init__(self, player, coords):
+        self.icon = "G"
+        super().__init__(player, coords, False)
+        self.blockable_moves_sets = []
+        self.unblockable_moves = [(-1, 1), (0, 1), 
+                                  (1, 1), (1, 0), 
+                                  (0, -1), (-1, 0)]
 
     def promote(self):
         print("Gold General cannot be promoted.")
@@ -45,50 +48,70 @@ class GoldGeneral(Piece):
 
 class SilverGeneral(Piece):
 
-    icon = "S"
-    moves = [(-1, 1), (0, 1), 
-             (1, 1), (1, -1), 
-             (-1, -1)]
+    blockable_moves_sets = []
+    unblockable_moves = [(-1, 1), (0, 1), 
+                         (1, 1), (1, -1), 
+                         (-1, -1)]
+
+    def __init__(self, player, coords):
+        self.icon = "S"
+        super().__init__(player, coords, False)
 
     def promote(self):
         self.icon = "+" + self.icon
-        self.moves = GoldGeneral.moves
+        self.unblockable_moves = GoldGeneral.unblockable_moves
 
 
 class Bishop(Piece):
 
-    icon = "B"
-    moves = [(-1, 1), (-2, 2), 
-             (1, 1), (2, 2), 
-             (1, -1), (2, -2), 
-             (-1, -1), (-2, 2)]
+    up_right_moves = [(1, 1), (2, 2), (3, 3), (4, 4)]
+    down_right_moves = [(1, -1), (2, -2), (3, -3), (4, -4)]
+    down_left_moves = [(-1, -1), (-2, -2), (-3, -3), (-4, -4)]
+    up_left_moves = [(-1, 1), (-2, 2), (-3, 3), (-4, 4)]
+
+    blockable_moves_sets = [up_right_moves, down_left_moves, up_left_moves]
+    unblockable_moves = []
+
+    def __init__(self, player, coords):
+        self.icon = "B"
+        super().__init__(player, coords, True)
 
     def promote(self):
         self.icon = "+" + self.icon
-        self.moves.extend(King.moves)
+        self.unblockable_moves.extend(King.unblockable_moves)
 
 
 class Rook(Piece):
 
-    icon = "R"
-    moves = [(0, 1), (0, 2), 
-             (1, 0), (1, 2), 
-             (0, -1), (0, -2), 
-             (-1, 0), (-2, 0)]
+    up_moves = [(0, 1), (0, 2), (0, 3), (0, 4)]
+    right_moves = [(1, 0), (2, 0), (3, 0), (4, 0)]
+    down_moves = [(0, -1), (0, -2), (0, -3), (0, -4)]
+    left_moves = [(-1, 0), (-2, 0), (-3, 0), (-4, 0)]
+
+    unblockable_moves = []
+    blockable_moves_sets = [up_moves, right_moves, down_moves, left_moves]
+
+    def __init__(self, player, coords):
+        self.icon = "R"
+        super().__init__(player, coords, True)
 
     def promote(self):
         self.icon = "+" + self.icon
-        self.moves.extend(King.moves)
+        self.unblockable_moves.extend(King.unblockable_moves)
 
 
 class Pawn(Piece):
 
-    icon = "P"
-    moves = [(0, 1)]
+    unblockable_moves = [(0, 1)]
+    blockable_moves_sets = []
+
+    def __init__(self, player, coords):
+        self.icon = "P"
+        super().__init__(player, coords, False)
 
     def promote(self):
         self.icon = "+" + self.icon
-        self.moves = GoldGeneral.moves
+        self.unblockable_moves = GoldGeneral.unblockable_moves
 
 
 class Board:
@@ -100,8 +123,13 @@ class Board:
         self.grid = [[""]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
         self.heatmap_UPPER = [[0]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
         self.heatmap_lower = [[0]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
+        self.blockable_pieces = []
+        self.king_UPPER = None
+        self.king_lower = None
         self.captures_UPPER = []
         self.captures_lower = []
+        self.pieces_UPPER = []
+        self.pieces_lower = []
         self.current_player = "lower"
         self.init_grid()
 
@@ -112,11 +140,16 @@ class Board:
         pieces = [King, GoldGeneral, SilverGeneral, Bishop, Rook]
 
         for i in range(self.BOARD_SIZE):
-            self.place_piece(pieces[i]("UPPER", (4 - i, 4), self), (4 - i, 4))
-            self.place_piece(pieces[i]("lower", (i, 0), self), (i, 0))
 
-        self.place_piece(Pawn("UPPER", (0, 3), self), (0, 3))
-        self.place_piece(Pawn("lower", (4, 1), self), (4, 1))
+            piece_UPPER = pieces[i]("UPPER", (4 - i, 4))
+            piece_lower = pieces[i]("lower", (i, 0))
+
+            self.place_piece(piece_UPPER, piece_UPPER.coords)
+            print(" ")
+            self.place_piece(piece_lower, piece_lower.coords)
+
+        self.place_piece(Pawn("UPPER", (4, 3)), (4, 3))
+        self.place_piece(Pawn("lower", (0, 1)), (0, 1))
 
 
     def init_grid_filemode(self, filename):
@@ -125,40 +158,62 @@ class Board:
         pass
 
 
-    def move(self, src, dst):
+    def move_piece(self, src, dst, enforce_player=True):
         """ Move a piece from start to destination if it is a valid move.
         """
 
         piece = self.get_piece(src)
 
-        if self.is_valid_move(piece, src, dst):
+        if piece.player != self.current_player and enforce_player:
+            return False
+
+        if dst in self.get_valid_dsts(src):
             if self.is_opponent_piece(dst):
                 self.capture_piece(dst)
+                self.remove_piece(src)
+                self.place_piece(piece, dst)
 
-            self.remove_piece(src)
-            self.place_piece(piece, dst)
+            elif not self.get_piece(dst):
+                self.remove_piece(src)
+                self.place_piece(piece, dst)
+
+            else:
+                return False
 
             return True
         else:
             return False
 
 
-    def is_valid_move(self, piece, src, dst):
-        """ Determines whether a particular piece is allowed to move from src to dst
-            Also takes into account player's board orientation
+    def get_valid_dsts(self, coords, count_self=False):
+        """ returns all valid destinations a piece can move to.
         """
-        if piece.player != self.current_player:
-            print("That is not your piece.")
-            return False
 
-        possible_dsts = [add_coords(self.current_player, move, src) for move in piece.moves]
+        valid_dsts = []
+        piece = self.get_piece(coords)
 
-        # print(self.position)
-        # print(possible_dsts)
+        for move in piece.unblockable_moves:
+            possible_dst = add_coords(self.current_player, move, coords)
+            if self.in_bounds(possible_dst):
+                if not self.is_players_piece(piece.player, possible_dst) or count_self:
+                    valid_dsts.append(possible_dst)
 
-        if dst in possible_dsts and dst[0] < 5 and dst[1] < 5:
-            return True
-        return False
+        for moves_set in piece.blockable_moves_sets:
+            for move in moves_set:
+                possible_dst = add_coords(self.current_player, move, coords)
+
+                if self.in_bounds(possible_dst):
+                    if not self.is_players_piece(piece.player, possible_dst) or count_self:
+                        valid_dsts.append(possible_dst)
+
+                    if self.get_piece(possible_dst):
+                        break
+
+        return valid_dsts
+
+
+    def is_players_piece(self, player, coords):
+        return self.get_piece(coords) and self.get_piece(coords).player == player
 
 
     def is_opponent_piece(self, dst):
@@ -169,25 +224,50 @@ class Board:
             return True
         return False
 
+    def in_bounds(self, dst):
+        return 0 <= dst[0] < 5 and 0 <= dst[1] < 5
+
 
     def place_piece(self, piece, coords):
         """ Places Piece at position coords on this Board's grid
         """
-        self.update_heatmap(piece, coords)
-        self.grid[coords[0]][coords[1]] = piece
+        piece.coords = coords
 
-
-    def update_heatmap(self, piece, coords, diff):
-        """ Updates the players heatmap upon placing the peace
-        """
-        
-        possible_dsts = [add_coords(piece.player, move, src) for move in piece.moves]
+        if type(piece) == King:
+            if piece.player == "UPPER":
+                self.king_UPPER = piece
+            else:
+                self.king_lower = piece
 
         if piece.player == "UPPER":
-            self.heatmap_UPPER[[coords[0]][coords[1]]] += diff
+            self.pieces_UPPER.append(piece)
+        else:
+            self.pieces_lower.append(piece)
 
-        elif piece.player == "lower":
-            self.heatmap_lower[][[coords[0]][coords[1]]] += diff
+        for blockable_piece in self.blockable_pieces:
+            self.update_heatmap(blockable_piece.coords, -1)
+
+        self.grid[coords[0]][coords[1]] = piece
+        self.update_heatmap(coords, 1)
+
+        for blockable_piece in self.blockable_pieces:
+            self.update_heatmap(blockable_piece.coords, 1)
+
+        if piece.blockable:
+            self.blockable_pieces.append(piece)
+
+    def update_heatmap(self, coords, diff):
+        """ Updates the players heatmap upon placing the peace
+        """
+        piece = self.get_piece(coords)
+
+        if piece.player == "UPPER":
+            curr_heatmap = self.heatmap_UPPER
+        else:
+            curr_heatmap = self.heatmap_lower
+
+        for dst in self.get_valid_dsts(coords, True):
+            curr_heatmap[dst[0]][dst[1]] += diff
 
 
     def get_piece(self, coords):
@@ -199,15 +279,34 @@ class Board:
     def remove_piece(self, coords):
         """ Removes piece from grid if it exists at these coords
         """
+        piece = self.get_piece(coords)
+
+        self.update_heatmap(coords, -1)
         self.grid[coords[0]][coords[1]] = ""
+
+        if piece.blockable:
+            self.blockable_pieces.remove(piece)
+
+        if piece.player == "UPPER":
+            self.pieces_UPPER.remove(piece)
+        else:
+            self.pieces_lower.remove(piece)
 
     def capture_piece(self, coords):
         """ adds captured piece to the list of the current player
         """
+        piece = self.get_piece(coords)
+        self.remove_piece(coords)
+
         if self.current_player == "UPPER":
-            self.captures_UPPER.append(self.get_piece(coords).icon)
+            self.captures_UPPER.append(piece)
         else:
-            self.captures_lower.append(self.get_piece(coords).icon)
+            self.captures_lower.append(piece)
+
+    def can_promote(self, coords):
+        """ Check if the piece is eligible for promotion based on its position
+        """
+        return coords[1] == 0 or coords[1] == 4
 
     def switch_current_player(self):
         if self.current_player == "UPPER":
@@ -218,31 +317,46 @@ class Board:
     def is_checked(self, player):
         """ Returns whether or not player is in check.
         """
-        pass
+        if player == "UPPER":
+            other_heatmap = self.heatmap_lower
+            king_coords = self.king_UPPER.coords
+        else:
+            other_heatmap = self.heatmap_UPPER
+            king_coords = self.king_lower.coords
 
+        return other_heatmap[king_coords[0]][king_coords[1]] > 0
 
     def is_checkmated(self, player):
         """ Returns whether or not player is checkmated.
         """
-        if self.is_checked(player):
-            return
-        return False
+        if not self.is_checked(player):
+            return False
 
-    # Heatmap functions
-    def can_block_check(self):
+        pieces = self.pieces_UPPER if player == "UPPER" else self.pieces_lower
+        for piece in pieces[:]:
+            piece_coords = piece.coords
+            valid_dsts = self.get_valid_dsts(piece_coords)
+            for dst in valid_dsts:
 
+                captures_before = self.captures_UPPER[:] if player == "UPPER" else self.captures_lower[:]
 
-class Heatmap:
+                self.move_piece(piece_coords, dst, False)
+                self.get_piece(dst)
 
-    def can_block_check(self):
-        pass
+                captures_after = self.captures_UPPER if player == "UPPER" else self.captures_lower
+                is_checked = self.is_checked(player)
 
-    def can_capture_check(self):
-        pass
+                self.remove_piece(dst)
+                self.place_piece(piece, piece_coords)
 
-    def can_move_king(self):
-        pass
+                if len(captures_after) > len(captures_before):
+                    resurrected_piece = captures_after.pop()
+                    self.place_piece(resurrected_piece, dst)
 
+                if not is_checked:
+                    return False
+
+        return True
 
 
 if __name__ == "__main__":
@@ -253,18 +367,37 @@ if __name__ == "__main__":
 
 
     while not game_over:
-        os.system('clear')
+        # os.system('clear')
 
         print(" ")
         print("NUM MOVES: " + str(num_moves)) 
         print(" ")
         print(stringify_board(board.grid))
-        print(stringify_board())
+        print(" ")
+        # print("Heatmap UPPER: ")
+        # print(stringify_board(board.heatmap_UPPER))
+        # print(" ")
+        # print("Heatmap lower: ")
+        # print(stringify_board(board.heatmap_lower))
 
         if board.current_player == "UPPER":
-            print("Captures UPPER: " + " ".join(board.captures_UPPER))
+            print("Captures UPPER: " + " ".join([piece.icon for piece in board.captures_UPPER]))
         elif board.current_player == "lower":
-            print("Captures lower: " + " ".join(board.captures_lower))
+            print("Captures lower: " + " ".join([piece.icon for piece in board.captures_lower]))
+
+        if board.is_checked("UPPER"):
+            print("UPPER player is in check!")
+
+        if board.is_checked("lower"):
+            print("lower player is in check!")
+
+        if board.is_checkmated("UPPER"):
+            print("UPPER player is checkmated GAME OVER.")
+            game_over = True
+
+        if board.is_checkmated("lower"):
+            print("lower player is checkmated. GAME OVER.")
+            game_over = True
 
         print(" ")
         user_input = input(board.current_player + "> ")
@@ -278,16 +411,18 @@ if __name__ == "__main__":
             # Execute move command
             if command == "move":
                 piece = board.get_piece(src)
-                if board.move(src, dst):
+                if board.move_piece(src, dst):
+                    if promote == "promote" and board.can_promote(dst):
+                        piece.promote()
                     board.switch_current_player()
-                if promote == "promote":
-                    piece.promote()
+                    num_moves += 1
+                else:
+                    print("Invalid move.")
 
             elif command == "drop":
                 pass
 
-            num_moves += 1
 
         except Exception as e:
-            print(e)
+            print(traceback.format_exc())
             print("Invalid command.")

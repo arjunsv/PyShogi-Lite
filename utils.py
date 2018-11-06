@@ -32,7 +32,10 @@ def add_coords(player, coord_1, coord_2):
 
 
 def _stringify_square(sq):
-    if type(sq) is not str or len(sq) > 2:
+    if type(sq) is int:
+        sq = str(sq) 
+
+    elif type(sq) is not str and type(sq) or len(sq) > 2:
         sq = sq.icon
 
     if len(sq) == 0:
