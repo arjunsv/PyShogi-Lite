@@ -8,20 +8,30 @@ def input_to_coords(user_input):
     pos_1, pos_2 = split_input[1], split_input[2]
     return (pos_to_coord(pos_1), pos_to_coord(pos_2))
 
+def input_to_drop(user_input):
+    split_input = user_input.split(" ")
+    piece, dst = split_input[1], split_input[2]
+    return piece, dst
+
 def input_to_commands(user_input):
     """ Parse user input into move or drop command and promote command
     """
     split_input = user_input.split(" ")
     command = split_input[0]
     if len(split_input) == 4:
-        return (command, split_input[3])
-    return (command, "")
+        return (command, True)
+    return (command, False)
 
 
 def pos_to_coord(pos_1):
-    """ Convert locs to pair of coordinate tuples
+    """ Convert board position to grid coordinates
     """
     return (ord(pos_1[0]) - ord('a'), int(pos_1[1]) - 1)
+
+def coords_to_pos(coords):
+    """ Convert grid coordinates to board position
+    """
+    return chr(ord('a') + coords[0]) + str(coords[1] + 1)
 
 def add_coords(player, coord_1, coord_2):
     """ Adds two coordinate pairs by row, col values
@@ -29,7 +39,6 @@ def add_coords(player, coord_1, coord_2):
     if player == "lower":
         return (coord_1[0] + coord_2[0], coord_1[1] + coord_2[1])
     return (coord_1[0] + coord_2[0], coord_2[1] - coord_1[1])
-
 
 def _stringify_square(sq):
     if type(sq) is int:
