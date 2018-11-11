@@ -1,5 +1,6 @@
 from utils import input_to_coords, input_to_commands, stringify_board
-from utils import add_coords, coords_to_pos, pos_to_coord, input_to_drop
+from utils import add_coords, coords_to_pos, pos_to_coord, input_to_drop, parse_test_case
+from utils import get_moves_from_dict, get_drops_from_dict
 import os, sys
 import time
 import traceback
@@ -7,36 +8,76 @@ import ast
 import copy
 import argparse
 
+BOARD_SIZE = 5
 
 class Player:
 
-    def __init__(self, name, heatmap, captures, king):
+    def __init__(self, name):
+        """
+        """
         self.name = name
-        self.heatmap = heatmap
-        self.captures = captures
-        self.king = king
+        self.heatmap = [[0]*BOARD_SIZE for i in range(BOARD_SIZE)]
+        self.king = None
+        self.is_promoted = False
+        self.pieces = []
+        self.captures = []
+
+    def copy(self, piece_to_copy):
+        """ Returns a (deep) copy of the player
+        """
+        new_player = Player(self.name)
+        new_player.heatmap = copy.deepcopy(self.heatmap)
+        new_player.king = piece_to_copy[self.king]
+        new_player.pieces = [piece_to_copy[p] for p in self.pieces]
+        new_player.captures = [piece_to_copy[cp] for cp in self.captures]
+
+        return new_player
+
 
 class Piece:
 
-    def __init__(self, player, coords, icon, blockable):
-        """ Initializes piece
+    def __init__(self, player_name, coords, icon, blockable):
+        """ Initializes piece.
         """
-        self.player = player
+        self.player_name = player_name
         self.coords = coords
-        self.icon = icon
+        self._icon = icon
+        self.is_promoted = False
         self.blockable = blockable
 
-        if self.player == "lower":
-            self.icon = self.icon.lower()
+    @property
+    def icon(self):
+        ret_icon = self._icon
+        if self.player_name == "lower":
+            ret_icon = self._icon.lower()
+        if self.is_promoted:
+            ret_icon = "+" + ret_icon
+        return ret_icon
 
-    def make_copy(self):
+    def copy(self):
+        """ Returns a copy of the piece.
+        """
         piece_type = type(self)
-        copy = piece_type(self.player, self.coords)
-        return copy
+        new_piece = piece_type(self.player_name, self.coords)
+        return new_piece
+
+    def demote(self):
+        """ Demotes piece of promoted, otherwise does nothing.
+        """
+        self.is_promoted = False
+        self.blockable_moves_sets = type(self).blockable_moves_sets
+        self.unblockable_moves = type(self).unblockable_moves
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.player == other.player and \
-               self.blockable == other.blockable and self.coords == other.coords 
+        """ Equality comparator for pieces.
+        """
+        return type(self) == type(other) and self.player_name == other.player_name and \
+               self.blockable == other.blockable and self.coords == other.coords
+
+    def __hash__(self):
+        """ Hash function for pieces
+        """
+        return hash((self.player_name, self.coords, self.icon, self.blockable))
 
 
 class King(Piece):
@@ -79,7 +120,7 @@ class SilverGeneral(Piece):
         super().__init__(player, coords, "S", False)
 
     def promote(self):
-        self.icon = "+" + self.icon
+        self.is_promoted = True
         self.unblockable_moves = GoldGeneral.unblockable_moves
 
 
@@ -90,14 +131,14 @@ class Bishop(Piece):
     down_left_moves = [(-1, -1), (-2, -2), (-3, -3), (-4, -4)]
     up_left_moves = [(-1, 1), (-2, 2), (-3, 3), (-4, 4)]
 
-    blockable_moves_sets = [up_right_moves, down_left_moves, up_left_moves]
+    blockable_moves_sets = [up_right_moves, down_left_moves, down_right_moves, up_left_moves]
     unblockable_moves = []
 
     def __init__(self, player, coords):
         super().__init__(player, coords, "B", True)
 
     def promote(self):
-        self.icon = "+" + self.icon
+        self.is_promoted = True
         self.unblockable_moves.extend(King.unblockable_moves)
 
 
@@ -112,11 +153,10 @@ class Rook(Piece):
     blockable_moves_sets = [up_moves, right_moves, down_moves, left_moves]
 
     def __init__(self, player, coords):
-        self.icon = "R"
         super().__init__(player, coords, "R", True)
 
     def promote(self):
-        self.icon = "+" + self.icon
+        self.is_promoted = True
         self.unblockable_moves.extend(King.unblockable_moves)
 
 
@@ -126,11 +166,10 @@ class Pawn(Piece):
     blockable_moves_sets = []
 
     def __init__(self, player, coords):
-        self.icon = "P"
         super().__init__(player, coords, "P", False)
 
     def promote(self):
-        self.icon = "+" + self.icon
+        self.is_promoted = True
         self.unblockable_moves = GoldGeneral.unblockable_moves
 
 
@@ -141,28 +180,24 @@ class Board:
         """
         self.BOARD_SIZE = 5
         self.grid = [[""]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
-        self.heatmap_UPPER = [[0]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
-        self.heatmap_lower = [[0]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
         self.blockable_pieces = []
-        self.king_UPPER = None
-        self.king_lower = None
-        self.captures_UPPER = []
-        self.captures_lower = []
-        self.pieces_UPPER = []
-        self.pieces_lower = []
-        self.current_player = "lower"
+        self.players = {"lower" : Player("lower"), "UPPER": Player("UPPER")}
+        self.current_player = self.players["lower"]
         self.game_over = False
+        self.file_over = False
+        self.last_command = ""
         self.num_moves = 0
+        self.file_index = 0
 
         if filename:
             self.init_grid_filemode(filename)
         else:
             self.init_grid()
 
-
     def init_grid(self):
         """ Populates pieces of initial board state.
         """
+
         pieces = [King, GoldGeneral, SilverGeneral, Bishop, Rook]
 
         for i in range(self.BOARD_SIZE):
@@ -170,109 +205,127 @@ class Board:
             piece_UPPER = pieces[i]("UPPER", (4 - i, 4))
             piece_lower = pieces[i]("lower", (i, 0))
 
-            self.place_piece(piece_UPPER, piece_UPPER.coords)
-            self.place_piece(piece_lower, piece_lower.coords)
+            self.place_piece(self.players["UPPER"], piece_UPPER, piece_UPPER.coords)
+            self.place_piece(self.players["lower"], piece_lower, piece_lower.coords)
 
-        self.place_piece(Pawn("UPPER", (4, 3)), (4, 3))
-        self.place_piece(Pawn("lower", (0, 1)), (0, 1))
-
+        self.place_piece(self.players["UPPER"], Pawn("UPPER", (4, 3)), (4, 3))
+        self.place_piece(self.players["lower"], Pawn("lower", (0, 1)), (0, 1))
 
     def init_grid_filemode(self, filename):
         """ Initializes grid from file config as opposed to default config.
         """
-        with open(filename) as f:
-            self.read_file_lines(f.readlines())
-    
-    def read_file_lines(self, lines):
         icon_to_piece = {'k': King, 'g': GoldGeneral, 's': SilverGeneral, 
                          'b': Bishop, 'r': Rook, 'p': Pawn}
+        filemode_dict = parse_test_case(filename)
+        for piece_dict in filemode_dict["initialPieces"]:
+            icon, pos = piece_dict["piece"], pos_to_coord(piece_dict["position"])
+            stripped_icon = icon.strip("+")
+            player_name = "UPPER" if stripped_icon.isupper() else "lower"
+            stripped_icon = stripped_icon.lower()
+            piece = icon_to_piece[stripped_icon](player_name, pos)
+            if "+" in icon:
+                piece.promote()
+            self.place_piece(self.players[player_name], piece, pos)
 
-        is_upper = True
-        
-        for line in lines:
+        self.players["UPPER"].captures = [icon_to_piece[i.lower()]("UPPER", (-1, -1)) for i in filemode_dict["upperCaptures"]]
+        self.players["lower"].captures = [icon_to_piece[i.lower()]("lower", (-1, -1)) for i in filemode_dict["lowerCaptures"]]
+        self.filemode_commands = filemode_dict["moves"]
+    
+    def next_file_command(self):
+        """ returns next file command
+        """
+        if self.file_index >= len(self.filemode_commands):
+            self.file_over = True
+            return ""
 
-            # Pieces
-            if line[0].lower() in icon_to_piece:
-                player = "UPPER" if line[0].isupper() else "lower"
-                position = line[2:4]
-                piece = icon_to_piece[line[0].lower()](player, pos_to_coord(position))
-                self.place_piece(piece, pos_to_coord(position))
+        command = self.filemode_commands[self.file_index]
+        self.file_index += 1
+        return command
 
-            # Captured Pieces
-            if line[0] == "[" and is_upper:
-                is_upper = False
-
-                # TODO: Need to put the actual pieces in there.. not just the icons
-                self.captures_UPPER = ast.literal_eval(line)
-
-            if line[0] == "[" and not is_upper:
-                self.captures_lower = ast.literal_eval(line)    
-
-            # Commands
-            if line[0:4] == "move" or line[0:4] == "drop":
-                self.execute_input(line)
-
-            
-    def copy_board(self):
+    def copy(self):
         """ Returns a new board object that is a copy of the current instance (self)
         """
-        new_board = Board()
+        all_pieces = self.players["UPPER"].pieces + self.players["lower"].pieces
+        all_captures = self.players["UPPER"].captures + self.players["lower"].captures
+        piece_to_copy = {piece : piece.copy() for piece in all_pieces + all_captures}
+        piece_to_copy[""] = ""
+
+        new_board = Board("")
+
+        new_board.grid = self.copy_grid(self.grid, piece_to_copy)
         new_board.BOARD_SIZE = self.BOARD_SIZE
-        new_board.grid = copy.deepcopy(self.grid)
-        new_board.heatmap_UPPER = copy.deepcopy(self.heatmap_UPPER)
-        new_board.heatmap_lower = copy.deepcopy(self.heatmap_lower)
-        new_board.blockable_pieces = [bp.make_copy() for bp in self.blockable_pieces]
-        new_board.king_UPPER = self.king_UPPER.make_copy()
-        new_board.king_lower = self.king_lower.make_copy()
-        new_board.captures_UPPER = [cp.make_copy() for cp in self.captures_UPPER]
-        new_board.captures_lower = [cp.make_copy() for cp in self.captures_lower]
-        new_board.pieces_UPPER = [p.make_copy() for p in self.pieces_UPPER]
-        new_board.pieces_lower = [p.make_copy() for p in self.pieces_lower]
-        new_board.current_player = self.current_player
+        new_board.players = self.copy_players(piece_to_copy)
+        new_board.blockable_pieces = [piece_to_copy[bp] for bp in self.blockable_pieces]
+        new_board.current_player = new_board.players[self.current_player.name]
 
         return new_board
 
+    def copy_grid(self, grid, piece_to_copy):
+        new_grid = [[""]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
+        for i in range(self.BOARD_SIZE):
+            for j in range(self.BOARD_SIZE):
+                new_grid[i][j] = piece_to_copy[grid[i][j]]
+        return new_grid
+
+    def copy_players(self, piece_to_copy):
+        new_players = {}
+        for name in self.players:
+            new_players[name] = self.players[name].copy(piece_to_copy)
+        return new_players
 
     def execute_input(self, user_input):
+        if not self.file_over:
+            self.last_command = user_input
         command, promote = input_to_commands(user_input)
 
         # Execute move command
         if command == "move":
-            src, dst = input_to_coords(user_input)
-            piece = self.get_piece(src)
-            if self.move_piece(src, dst):
-                if promote and self.can_promote(piece.player, dst):
-                    piece.promote()
-                self.switch_current_player()
-                self.num_moves += 1
-                print(piece.player + " player action: " + user_input.strip())
-                return True
-            else:
-                print("Invalid move.")
-                return False
+            return self.execute_move(user_input, promote)
 
         elif command == "drop":
-            icon, dst = input_to_drop(user_input)
-            self.drop_piece(icon, pos_to_coord(dst))
-            self.switch_current_player()
-            print(piece.player + " player action: " + user_input.strip()) 
-            return True
+            return self.execute_drop(user_input)
 
         return False
 
-    def get_valid_dsts(self, coords, count_self=False):
+    def execute_move(self, user_input, promote):
+        src, dst = input_to_coords(user_input)
+        piece = self.get_piece(src)
+
+        if self.move_piece(piece, dst):
+            if promote and self.can_promote(piece, dst):
+                piece.promote()
+            return True
+
+        else:
+            return False
+
+    def can_promote(self, piece, dst):
+        """ Check if the piece is eligible for promotion based on its position
+        """
+        if piece.player_name == "UPPER":
+            return dst[1] == 0
+        else:
+            return dst[1] == 4
+
+    def execute_drop(self, user_input):
+        icon, dst = input_to_drop(user_input)
+        for piece in self.current_player.captures:
+            if piece.icon.lower() == icon.lower():
+                return self.drop_piece(self.current_player, piece, pos_to_coord(dst))
+        return False
+
+    def get_valid_dsts(self, piece, count_self=False):
         """ returns all valid destinations a piece can move to.
         """
 
         valid_dsts = []
-        piece = self.get_piece(coords)
 
         for move in piece.unblockable_moves:
-            possible_dst = add_coords(self.current_player, move, coords)
+            possible_dst = add_coords(self.players[piece.player_name], move, piece.coords)
             if self.in_bounds(possible_dst):
-                if not self.is_players_piece(piece.player, possible_dst) or count_self:
+                if not self.is_players_piece(self.players[piece.player_name], possible_dst) or count_self:
                     # Can't move King into check
-                    opp_heatmap = self.heatmap_lower if piece.player == "UPPER" else self.heatmap_UPPER
+                    opp_heatmap = self.get_other_player(self.current_player).heatmap
                     if type(piece) == King and opp_heatmap[possible_dst[0]][possible_dst[1]] > 0:
                         pass
                     else:
@@ -280,10 +333,10 @@ class Board:
 
         for moves_set in piece.blockable_moves_sets:
             for move in moves_set:
-                possible_dst = add_coords(self.current_player, move, coords)
+                possible_dst = add_coords(self.current_player, move, piece.coords)
 
                 if self.in_bounds(possible_dst):
-                    if not self.is_players_piece(piece.player, possible_dst) or count_self:
+                    if not self.is_players_piece(self.players[piece.player_name], possible_dst) or count_self:
                         valid_dsts.append(possible_dst)
 
                     if self.get_piece(possible_dst):
@@ -291,93 +344,86 @@ class Board:
 
         return valid_dsts
 
+    def get_other_player(self, player):
+        """ Returns the player who is not player.
+        """
+        return self.players["UPPER"] if player.name == "lower" else self.players["lower"]
 
     def is_players_piece(self, player, coords):
-        return self.get_piece(coords) and self.get_piece(coords).player == player
+        return self.get_piece(coords) and self.get_piece(coords).player_name == player.name
 
-
-    def is_opponent_piece(self, dst):
+    def is_opponent_piece(self, piece):
         """
         """
-        dst_piece = self.get_piece(dst)
-        if dst_piece != "" and dst_piece.player != self.current_player:
+        if piece != "" and piece.player_name != self.current_player.name:
             return True
         return False
 
     def in_bounds(self, dst):
         return 0 <= dst[0] < 5 and 0 <= dst[1] < 5
 
-
-    def place_piece(self, piece, coords):
+    def place_piece(self, player, piece, coords):
         """ Places Piece at position coords on this Board's grid
         """
         piece.coords = coords
 
         if type(piece) == King:
-            if piece.player == "UPPER":
-                self.king_UPPER = piece
-            else:
-                self.king_lower = piece
+            player.king = piece
 
-        if piece.player == "UPPER":
-            self.pieces_UPPER.append(piece)
-        else:
-            self.pieces_lower.append(piece)
+        player.pieces.append(piece)
 
         for blockable_piece in self.blockable_pieces:
-            self.update_heatmap(blockable_piece.coords, -1)
+            self.update_heatmap(blockable_piece, -1)
 
         self.grid[coords[0]][coords[1]] = piece
-        self.update_heatmap(coords, 1)
+        self.update_heatmap(piece, 1)
 
         for blockable_piece in self.blockable_pieces:
-            self.update_heatmap(blockable_piece.coords, 1)
+            self.update_heatmap(blockable_piece, 1)
 
         if piece.blockable:
             self.blockable_pieces.append(piece)
-
 
     def get_piece(self, coords):
         """ Returns Piece if it exists at these coords
         """
         return self.grid[coords[0]][coords[1]]
 
-
-    def remove_piece(self, coords):
+    def remove_piece(self, piece):
         """ Removes piece from grid if it exists at these coords
         """
-        piece = self.get_piece(coords)
-
-        self.update_heatmap(coords, -1)
-        self.grid[coords[0]][coords[1]] = ""
-
         if piece.blockable:
             self.blockable_pieces.remove(piece)
 
-        if piece.player == "UPPER":
-            self.pieces_UPPER.remove(piece)
-        else:
-            self.pieces_lower.remove(piece)
+        for blockable_piece in self.blockable_pieces:
+            self.update_heatmap(blockable_piece, -1)
 
+        self.update_heatmap(piece, -1)
+        self.grid[piece.coords[0]][piece.coords[1]] = ""
 
-    def move_piece(self, src, dst, enforce_player=True):
+        for blockable_piece in self.blockable_pieces:
+            self.update_heatmap(blockable_piece, 1)
+
+        self.players[piece.player_name].pieces.remove(piece)
+
+    def move_piece(self, piece, dst, enforce_player=True):
         """ Move a piece from start to destination if it is a valid move.
         """
 
-        piece = self.get_piece(src)
-
-        if piece.player != self.current_player and enforce_player:
+        if piece.player_name != self.current_player.name and enforce_player:
             return False
 
-        if dst in self.get_valid_dsts(src):
-            if self.is_opponent_piece(dst):
-                self.capture_piece(dst)
-                self.remove_piece(src)
-                self.place_piece(piece, dst)
+        self.get_valid_dsts(piece)
+
+        if dst in self.get_valid_dsts(piece):
+            if self.is_opponent_piece(self.get_piece(dst)):
+                self.capture_piece(self.get_piece(dst))
+                self.remove_piece(piece)
+                self.place_piece(self.current_player, piece, dst)
 
             elif not self.get_piece(dst):
-                self.remove_piece(src)
-                self.place_piece(piece, dst)
+                self.remove_piece(piece)
+                self.place_piece(self.current_player, piece, dst)
 
             else:
                 return False
@@ -386,105 +432,71 @@ class Board:
         else:
             return False
 
-    def capture_piece(self, coords):
+    def capture_piece(self, piece):
         """ adds captured piece to the list of the current player
         """
-        piece = self.get_piece(coords)
-        self.remove_piece(coords)
+        self.remove_piece(piece)
+        capture_player = self.get_other_player(self.players[piece.player_name])
+        piece.demote()
+        piece.player_name = capture_player.name
+        capture_player.captures.append(piece)
 
-        if self.current_player == "UPPER":
-            self.captures_UPPER.append(piece)
-        else:
-            self.captures_lower.append(piece)
-
-
-    def drop_piece(self, icon, dst):
+    def drop_piece(self, player, piece, dst):
         """ Drops captured piece onto the board. Removes piece from captured pieces.
         """
         if self.get_piece(dst):
             return False
 
-        if self.current_player == "UPPER":
-            captured_pieces = self.captures_UPPER
-        else:
-            captured_pieces = self.captures_lower
+        captured_pieces = player.captures
 
-        # TODO: Perhaps convert captured_pieces to a set for O(1) access
-        icons = [p.icon for p in captured_pieces]
-
-        drop_piece = None
-        for i in range(len(icons)):
-            if icon == icons[i]:
-                drop_piece = captured_pieces[i]
-
-        if not drop_piece:
+        if not piece:
             print("You have not captured that piece.")
             return False
 
-        # Demote and convert the piece to other player
-        captured_pieces.remove(drop_piece)
-        drop_piece_player = "UPPER" if drop_piece.player == "lower" else "lower"
-        drop_piece = type(drop_piece)(drop_piece_player, drop_piece.coords)
-
         # If the piece is a Pawn, then it cannot be dropped into a promotable
-        if type(drop_piece) == Pawn:
-            if self.can_promote(drop_piece.player, dst):
+        if type(piece) == Pawn:
+            if self.can_promote(piece, dst):
                 return False
 
             # checkmate condition here
-            board_copy = board.copy_board()
-            board_copy.place_piece(drop_piece, dst)
-            if board_copy.is_checkmated("UPPER" if drop_piece.player == "lower" else "lower"):
+            board_copy = board.copy()
+            for captured_piece in board_copy.current_player.captures:
+                if captured_piece == piece:
+                    copy_piece = piece
+
+            board_copy.place_piece(board_copy.current_player, copy_piece, dst)
+            if board_copy.is_checkmated(self.players[piece.player_name]):
                 return False
 
             # two unpromoted pawns in same column condition here
-            pieces = self.pieces_UPPER if drop_piece.player == "UPPER" else self.pieces_lower
-            for piece in pieces:
-                if type(piece) == Pawn and dst[0] == piece.coords[0]:
+            for p in player.pieces:
+                if type(p) == Pawn and dst[0] == p.coords[0]:
                     return False
 
-        self.place_piece(drop_piece, dst)
+        self.place_piece(self.current_player, piece, dst)
+        captured_pieces.remove(piece)
         return True
 
-
-    def can_promote(self, player, coords):
-        """ Check if the piece is eligible for promotion based on its position
-        """
-        if player == "UPPER":
-            return coords[1] == 0
-        else:
-            return coords[1] == 4
-
-
     def switch_current_player(self):
-        if self.current_player == "UPPER":
-            self.current_player = "lower"
+        if self.current_player.name == "UPPER":
+            self.current_player = self.players["lower"]
         else:
-            self.current_player = "UPPER"
+            self.current_player = self.players["UPPER"]
 
-
-    def update_heatmap(self, coords, diff):
+    def update_heatmap(self, piece, diff):
         """ Updates the players heatmap upon placing the peace
         """
-        piece = self.get_piece(coords)
+        curr_heatmap = self.players[piece.player_name].heatmap
 
-        if piece.player == "UPPER":
-            curr_heatmap = self.heatmap_UPPER
-        else:
-            curr_heatmap = self.heatmap_lower
-
-        for dst in self.get_valid_dsts(coords, True):
+        for dst in self.get_valid_dsts(piece, True):
             curr_heatmap[dst[0]][dst[1]] += diff
 
     def is_checked(self, player):
-        """ Returns whether or not player is in check.
+        """ Returns whether or not player is in check by other_player.
         """
-        if player == "UPPER":
-            other_heatmap = self.heatmap_lower
-            king_coords = self.king_UPPER.coords
-        else:
-            other_heatmap = self.heatmap_UPPER
-            king_coords = self.king_lower.coords
+        other_player = self.get_other_player(player)
+        other_heatmap = other_player.heatmap
+        king_coords = player.king.coords
 
         return other_heatmap[king_coords[0]][king_coords[1]] > 0
 
@@ -492,21 +504,39 @@ class Board:
         """ If you are in check, returns the available moves to get you out of check.
         """
         uncheck_moves = {}
-
-        pieces = self.pieces_UPPER if player == "UPPER" else self.pieces_lower
+        pieces = player.pieces
 
         # Iterate through all of your own pieces
         for piece in pieces:
-            for dst in self.get_valid_dsts(piece.coords):
-                board_copy = self.copy_board()
-                board_copy.move_piece(piece.coords, dst)
-                if not board_copy.is_checked(player):
-                    if piece.icon in uncheck_moves:
-                        uncheck_moves[piece.icon].append(coords_to_pos(dst))
+            for dst in self.get_valid_dsts(piece):
+                board_copy = self.copy()
+                piece_copy = board_copy.get_piece(piece.coords)
+                board_copy.move_piece(piece_copy, dst)
+                if not board_copy.is_checked(board_copy.players[piece.player_name]):
+                    if (piece.icon, piece.coords) in uncheck_moves:
+                        uncheck_moves[(piece.icon, piece.coords)].append(coords_to_pos(dst))
                     else:
-                        uncheck_moves[piece.icon] = [coords_to_pos(dst)]
+                        uncheck_moves[(piece.icon, piece.coords)] = [coords_to_pos(dst)]
 
         return uncheck_moves
+    
+    def get_uncheck_drops(self, player):
+        """ If you are in check, returns the available drops to get you out of check.
+        """
+        uncheck_drops = {}
+
+        for piece in player.captures:
+            for i in range(BOARD_SIZE):
+                for j in range(BOARD_SIZE):
+                    board_copy = self.copy()
+                    board_copy.drop_piece(board_copy.players[player.name], piece, (i, j))
+                    if not board_copy.is_checked(board_copy.players[player.name]):
+                        if piece.icon in uncheck_drops:
+                            uncheck_drops[piece.icon].append(coords_to_pos((i, j)))
+                        else:
+                            uncheck_drops[piece.icon] = [coords_to_pos((i, j))]
+        
+        return uncheck_drops
 
     def is_checkmated(self, player):
         """ Returns whether or not player is checkmated.
@@ -514,54 +544,98 @@ class Board:
         if not self.is_checked(player):
             return False
 
-        return self.get_uncheck_moves(player) == []
+        return self.get_uncheck_moves(player) == [] and self.get_uncheck_drops(player) == []
+    
+    def print_metadata(self):
+        print("Captures UPPER: " + " ".join([piece.icon for piece in self.players["UPPER"].captures]))
+        print("Captures lower: " + " ".join([piece.icon for piece in self.players["lower"].captures]))
+        print("")
+        
+        if self.num_moves > 200:
+            print("Tie game. Too many moves.")
 
+        if self.is_checked(self.players["UPPER"]):
+            print("UPPER player is in check!")
+            print("Available moves:")
+            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["UPPER"]))
+            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["UPPER"]))
+            for move in moves:
+                print(move)
+
+            for drop in drops:
+                print(drop)
+
+        if self.is_checked(self.players["lower"]):
+            print("lower player is in check!")
+            print("Available moves:")
+            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["lower"]))
+            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["lower"]))
+            for move in moves:
+                print(move)
+            
+            for drop in drops:
+                print(drop)
+
+        if self.is_checkmated(self.players["UPPER"]):
+            board.winner = "lower"
+            board.winner_reason = "Checkmate."
+            board.game_over = True
+
+        if self.is_checkmated(self.players["lower"]):
+            board.winner = "UPPER"
+            board.winner_reason = "Checkmate."
+            board.game_over = True
+
+        if not board.game_over:
+            print(self.current_player.name + "> ", end="")
+
+    def print_state(self):
+        """ Prints state of the game.
+        """
+        print(self.get_other_player(self.players[self.current_player.name]).name + " player action: " + board.last_command.strip()) 
+        print(stringify_board(self.grid))
+        self.print_metadata()
+        
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', nargs=1, dest="filename", required=False, help='runs MiniShogi in filemode.')
     args = parser.parse_args()
-    if args.filename:
-        board = Board(args.filename[0])
-    else:
-        board = Board("")
 
-    print(stringify_board(board.grid))
+    if args.filename:
+        filemode = True
+        board = Board(args.filename[0])
+        get_input = board.next_file_command
+    else:
+        filemode = False
+        board = Board("")
+        get_input = input
 
     while not board.game_over:
-        # os.system('clear')
-        # print("Heatmap UPPER: ")
-        # print(stringify_board(board.heatmap_UPPER))
-        # print(" ")
-        # print("Heatmap lower: ")
-        # print(stringify_board(board.heatmap_lower))
 
-        print("Captures UPPER: " + " ".join([piece.icon for piece in board.captures_UPPER]))
-        print("Captures lower: " + " ".join([piece.icon for piece in board.captures_lower]))
+        if not filemode:
+            board.print_state()
 
-        if board.is_checked("UPPER"):
-            print("UPPER player is in check!")
-            print(board.get_uncheck_moves("UPPER"))
+        user_input = get_input()
+        if board.execute_input(user_input):
+            if not filemode:
+                print(board.current_player.name + " player action: " + board.last_command.strip()) 
+            board.switch_current_player()
+            board.num_moves += 1
+            if not filemode:
+                print(stringify_board(board.grid))
+        
+        elif board.file_over:
+            break
 
-        if board.is_checked("lower"):
-            print("lower player is in check!")
-            print(board.get_uncheck_moves("lower"))
+        else:
+            board.switch_current_player()
+            board.winner = board.current_player.name
+            board.winner_reason = "Illegal move."
+            board.game_over = True
 
-        if board.is_checkmated("UPPER"):
-            print("UPPER player is checkmated GAME OVER.")
-            game_over = True
-
-        if board.is_checkmated("lower"):
-            print("lower player is checkmated. GAME OVER.")
-            game_over = True
-
-        print(" ")
-        user_input = input(board.current_player + "> ")
-
-        try:
-            board.execute_input(user_input)
-            print(stringify_board(board.grid))
-
-        except Exception as e:
-            print(traceback.format_exc())
-            print("Invalid command.")
+    if filemode:
+        board.print_state()
+        if board.game_over:
+            print(board.winner + " player wins.  " + board.winner_reason)

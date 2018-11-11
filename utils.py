@@ -22,7 +22,6 @@ def input_to_commands(user_input):
         return (command, True)
     return (command, False)
 
-
 def pos_to_coord(pos_1):
     """ Convert board position to grid coordinates
     """
@@ -36,9 +35,29 @@ def coords_to_pos(coords):
 def add_coords(player, coord_1, coord_2):
     """ Adds two coordinate pairs by row, col values
     """
-    if player == "lower":
+    if player.name == "lower":
         return (coord_1[0] + coord_2[0], coord_1[1] + coord_2[1])
     return (coord_1[0] + coord_2[0], coord_2[1] - coord_1[1])
+
+def get_moves_from_dict(moves_dict):
+    moves = []
+    for icon, coord in moves_dict:
+        for dst in moves_dict[(icon, coord)]:
+            move_string = "move "
+            move_string += coords_to_pos(coord) + " "
+            move_string += dst
+            moves.append(move_string)
+    return moves
+
+def get_drops_from_dict(drops_dict):
+    drops = []
+    for icon in drops_dict:
+        for dst in drops_dict[icon]:
+            drop_string = "drop "
+            drop_string += icon + " "
+            drop_string += dst
+            drops.append(drop_string)
+    return drops
 
 def _stringify_square(sq):
     if type(sq) is int:
@@ -70,7 +89,7 @@ def stringify_board(board):
 def parse_test_case(path):
     f = open(path)
     line = f.readline()
-    inital_board_state = []
+    initial_board_state = []
     
     while line != '\n':
         piece, position = line.strip().split(' ')
@@ -87,4 +106,4 @@ def parse_test_case(path):
         moves.append(line.strip())
         line = f.readline()
 
-    return dict(initialPieces=inital_board_state, upperCaptures=upper_captures, lowerCaptures=lower_captures, moves=moves)
+    return dict(initialPieces=initial_board_state, upperCaptures=upper_captures, lowerCaptures=lower_captures, moves=moves)
