@@ -21,6 +21,7 @@ class Player:
         self.is_promoted = False
         self.pieces = []
         self.captures = []
+        self.num_moves = 0
 
     def copy(self, piece_to_copy):
         """ Returns a (deep) copy of the player
@@ -72,12 +73,12 @@ class Piece:
         """ Equality comparator for pieces.
         """
         return type(self) == type(other) and self.player_name == other.player_name and \
-               self.blockable == other.blockable and self.coords == other.coords
+               self.blockable == other.blockable
 
     def __hash__(self):
         """ Hash function for pieces
         """
-        return hash((self.player_name, self.coords, self.icon, self.blockable))
+        return hash((self.player_name, self.icon, self.blockable))
 
 
 class King(Piece):
@@ -92,7 +93,7 @@ class King(Piece):
         super().__init__(player, coords, "K", False)
 
     def promote(self):
-        print("King cannot be promoted.")
+        return False
 
 
 class GoldGeneral(Piece):
@@ -106,7 +107,7 @@ class GoldGeneral(Piece):
         super().__init__(player, coords, "G", False)
 
     def promote(self):
-        print("Gold General cannot be promoted.")
+        return False
 
 
 class SilverGeneral(Piece):
@@ -122,6 +123,7 @@ class SilverGeneral(Piece):
     def promote(self):
         self.is_promoted = True
         self.unblockable_moves = GoldGeneral.unblockable_moves
+        return True
 
 
 class Bishop(Piece):
@@ -140,6 +142,7 @@ class Bishop(Piece):
     def promote(self):
         self.is_promoted = True
         self.unblockable_moves.extend(King.unblockable_moves)
+        return True
 
 
 class Rook(Piece):
@@ -158,6 +161,7 @@ class Rook(Piece):
     def promote(self):
         self.is_promoted = True
         self.unblockable_moves.extend(King.unblockable_moves)
+        return True
 
 
 class Pawn(Piece):
@@ -171,11 +175,12 @@ class Pawn(Piece):
     def promote(self):
         self.is_promoted = True
         self.unblockable_moves = GoldGeneral.unblockable_moves
+        return True
 
 
 class Board:
 
-    def __init__(self, filename):
+    def __init__(self, filename, copy=False):
         """ Initializes board.
         """
         self.BOARD_SIZE = 5
@@ -186,12 +191,11 @@ class Board:
         self.game_over = False
         self.file_over = False
         self.last_command = ""
-        self.num_moves = 0
         self.file_index = 0
 
         if filename:
             self.init_grid_filemode(filename)
-        else:
+        elif not copy:
             self.init_grid()
 
     def init_grid(self):
@@ -250,7 +254,7 @@ class Board:
         piece_to_copy = {piece : piece.copy() for piece in all_pieces + all_captures}
         piece_to_copy[""] = ""
 
-        new_board = Board("")
+        new_board = Board("", True)
 
         new_board.grid = self.copy_grid(self.grid, piece_to_copy)
         new_board.BOARD_SIZE = self.BOARD_SIZE
@@ -291,21 +295,23 @@ class Board:
         src, dst = input_to_coords(user_input)
         piece = self.get_piece(src)
 
-        if self.move_piece(piece, dst):
-            if promote and self.can_promote(piece, dst):
-                piece.promote()
-            return True
+        if promote and self.can_promote(piece, piece.coords, dst):
+            if self.move_piece(piece, dst):
+                return piece.promote()
+        elif not promote:
+            return self.move_piece(piece, dst)
 
-        else:
-            return False
+        return False
 
-    def can_promote(self, piece, dst):
+    def can_promote(self, piece, src, dst):
         """ Check if the piece is eligible for promotion based on its position
         """
+        if type(piece) == King or type(piece) == GoldGeneral or piece.is_promoted:
+            return False
         if piece.player_name == "UPPER":
-            return dst[1] == 0
+            return dst[1] == 0 or src[1] == 0
         else:
-            return dst[1] == 4
+            return dst[1] == 4 or src[1] == 4
 
     def execute_drop(self, user_input):
         icon, dst = input_to_drop(user_input)
@@ -455,7 +461,7 @@ class Board:
 
         # If the piece is a Pawn, then it cannot be dropped into a promotable
         if type(piece) == Pawn:
-            if self.can_promote(piece, dst):
+            if self.can_promote(piece, piece.coords, dst):
                 return False
 
             # checkmate condition here
@@ -465,7 +471,8 @@ class Board:
                     copy_piece = piece
 
             board_copy.place_piece(board_copy.current_player, copy_piece, dst)
-            if board_copy.is_checkmated(self.players[piece.player_name]):
+            board_copy.current_player.captures.remove(copy_piece)
+            if board_copy.is_checkmated(self.players[copy_piece.player_name], False):
                 return False
 
             # two unpromoted pawns in same column condition here
@@ -529,7 +536,10 @@ class Board:
             for i in range(BOARD_SIZE):
                 for j in range(BOARD_SIZE):
                     board_copy = self.copy()
-                    board_copy.drop_piece(board_copy.players[player.name], piece, (i, j))
+                    for captured_piece in board_copy.players[player.name].captures:
+                        if captured_piece == piece:
+                            piece_copy = captured_piece
+                    board_copy.drop_piece(board_copy.players[player.name], piece_copy, (i, j))
                     if not board_copy.is_checked(board_copy.players[player.name]):
                         if piece.icon in uncheck_drops:
                             uncheck_drops[piece.icon].append(coords_to_pos((i, j)))
@@ -538,43 +548,22 @@ class Board:
         
         return uncheck_drops
 
-    def is_checkmated(self, player):
+    def is_checkmated(self, player, check_drops=True):
         """ Returns whether or not player is checkmated.
         """
         if not self.is_checked(player):
             return False
 
-        return self.get_uncheck_moves(player) == [] and self.get_uncheck_drops(player) == []
+        if check_drops:
+            return not self.get_uncheck_moves(player) and not self.get_uncheck_drops(player)
+        else:
+            return not self.get_uncheck_moves(player)
     
     def print_metadata(self):
         print("Captures UPPER: " + " ".join([piece.icon for piece in self.players["UPPER"].captures]))
         print("Captures lower: " + " ".join([piece.icon for piece in self.players["lower"].captures]))
         print("")
         
-        if self.num_moves > 200:
-            print("Tie game. Too many moves.")
-
-        if self.is_checked(self.players["UPPER"]):
-            print("UPPER player is in check!")
-            print("Available moves:")
-            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["UPPER"]))
-            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["UPPER"]))
-            for move in moves:
-                print(move)
-
-            for drop in drops:
-                print(drop)
-
-        if self.is_checked(self.players["lower"]):
-            print("lower player is in check!")
-            print("Available moves:")
-            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["lower"]))
-            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["lower"]))
-            for move in moves:
-                print(move)
-            
-            for drop in drops:
-                print(drop)
 
         if self.is_checkmated(self.players["UPPER"]):
             board.winner = "lower"
@@ -585,6 +574,34 @@ class Board:
             board.winner = "UPPER"
             board.winner_reason = "Checkmate."
             board.game_over = True
+
+        if not self.game_over and self.current_player.num_moves > 199:
+            print("Tie game.  Too many moves.")
+            board.winner = ""
+            board.winner_reason = ""
+            board.game_over = True
+
+        if not self.game_over and self.is_checked(self.players["UPPER"]):
+            print("UPPER player is in check!")
+            print("Available moves:")
+            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["UPPER"]))
+            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["UPPER"]))
+            for move in moves:
+                print(move)
+
+            for drop in drops:
+                print(drop)
+
+        if not self.game_over and self.is_checked(self.players["lower"]):
+            print("lower player is in check!")
+            print("Available moves:")
+            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["lower"]))
+            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["lower"]))
+            for move in moves:
+                print(move)
+            
+            for drop in drops:
+                print(drop)
 
         if not board.game_over:
             print(self.current_player.name + "> ", end="")
@@ -622,7 +639,7 @@ if __name__ == "__main__":
             if not filemode:
                 print(board.current_player.name + " player action: " + board.last_command.strip()) 
             board.switch_current_player()
-            board.num_moves += 1
+            board.current_player.num_moves += 1
             if not filemode:
                 print(stringify_board(board.grid))
         
@@ -637,5 +654,5 @@ if __name__ == "__main__":
 
     if filemode:
         board.print_state()
-        if board.game_over:
+        if board.game_over and board.winner and board.winner_reason:
             print(board.winner + " player wins.  " + board.winner_reason)
