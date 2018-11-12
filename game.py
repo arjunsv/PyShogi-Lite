@@ -1,8 +1,8 @@
 from utils import input_to_coords, input_to_commands, stringify_board
 from utils import add_coords, coords_to_pos, pos_to_coord, input_to_drop
 from utils import parse_test_case, get_moves_from_dict, get_drops_from_dict
-from Board import Board, Player
-from Pieces import Piece, King, GoldGeneral, SilverGeneral, Bishop, Rook, Pawn
+from board import Board, Player
+from pieces import Piece, King, GoldGeneral, SilverGeneral, Bishop, Rook, Pawn
 import copy
 import argparse
 import sys
