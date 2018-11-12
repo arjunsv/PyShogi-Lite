@@ -1,5 +1,5 @@
 from utils import input_to_coords, input_to_commands, stringify_board
-from utils import add_coords, coords_to_pos, pos_to_coord, input_to_drop
+from utils import add_coords, coords_to_pos, pos_to_coords, input_to_drop
 from utils import parse_test_case, get_moves_from_dict, get_drops_from_dict
 from board import Board, Player
 from pieces import Piece, King, GoldGeneral, SilverGeneral, Bishop, Rook, Pawn
@@ -84,9 +84,7 @@ class Game:
             return False
 
         if self.board.is_checked(self.board.current_player):
-            board_copy = self.board.copy()
-            piece_copy = board_copy.get_piece(piece.coords)
-            board_copy.move_piece(piece_copy, dst)
+            board_copy = self.board.try_move_piece(piece, dst)
             if board_copy.is_checked(board_copy.current_player):
                 return False
 
@@ -105,31 +103,36 @@ class Game:
     
     def execute_drop(self, user_input):
         icon, dst = input_to_drop(user_input)
+        current_player = self.board.current_player
 
+        found_piece = None
         for piece in self.board.current_player.captures:
             if piece.icon.lower() == icon.lower():
-                if self.board.is_checked(self.board.current_player):
-                    board_copy = self.board.copy()
-                    piece_copy = self.board.get_copy_from_captures(piece, self.board.current_player.captures)
-                    board_copy.drop_piece(board_copy.current_player, piece_copy, dst)
+                found_piece = piece
+                break
 
-                    if board_copy.is_checked(board_copy.current_player):
-                        return False
+        if self.board.is_checked(current_player):
+            board_copy = self.board.try_drop_piece(current_player, found_piece, dst)
+            if board_copy.is_checked(board_copy.current_player):
+                return False
 
-                return self.board.drop_piece(self.board.current_player, piece, dst)
+        return self.board.drop_piece(current_player, found_piece, dst)
 
         return False
     
     def print_state(self):
         """ Prints the state of the board along with metadata at current game iteration.
         """
-        print(self.board.get_other_player_name(self.board.current_player.name) + " player action: " + self.last_command.strip()) 
+        print(self.board.get_other_player_name(self.board.current_player.name) + 
+              " player action: " + self.last_command.strip()) 
         print(self.board)
         self.print_metadata()
     
     def print_metadata(self):
-        print("Captures UPPER: " + " ".join([piece.icon for piece in self.board.players["UPPER"].captures]))
-        print("Captures lower: " + " ".join([piece.icon for piece in self.board.players["lower"].captures]))
+        print("Captures UPPER: " + 
+              " ".join([piece.icon for piece in self.board.players["UPPER"].captures]))
+        print("Captures lower: " + 
+              " ".join([piece.icon for piece in self.board.players["lower"].captures]))
         print()
         
         if self.board.is_checkmated(self.board.current_player):

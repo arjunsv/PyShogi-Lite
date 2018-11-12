@@ -6,12 +6,12 @@ def input_to_coords(user_input):
     """
     split_input = user_input.split(" ")
     pos_1, pos_2 = split_input[1], split_input[2]
-    return (pos_to_coord(pos_1), pos_to_coord(pos_2))
+    return (pos_to_coords(pos_1), pos_to_coords(pos_2))
 
 def input_to_drop(user_input):
     split_input = user_input.split(" ")
     piece, dst = split_input[1], split_input[2]
-    return piece, pos_to_coord(dst)
+    return piece, pos_to_coords(dst)
 
 def input_to_commands(user_input):
     """ Parse user input into move or drop command and promote command
@@ -22,7 +22,7 @@ def input_to_commands(user_input):
         return (command, True)
     return (command, False)
 
-def pos_to_coord(pos_1):
+def pos_to_coords(pos_1):
     """ Convert board position to grid coordinates
     """
     return (ord(pos_1[0]) - ord('a'), int(pos_1[1]) - 1)

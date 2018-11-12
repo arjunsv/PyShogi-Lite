@@ -1,5 +1,5 @@
 from utils import input_to_coords, input_to_commands, stringify_board
-from utils import add_coords, coords_to_pos, pos_to_coord, input_to_drop
+from utils import add_coords, coords_to_pos, pos_to_coords, input_to_drop
 from utils import parse_test_case, get_moves_from_dict, get_drops_from_dict
 from pieces import Piece, King, GoldGeneral, SilverGeneral, Bishop, Rook, Pawn
 import copy
@@ -34,8 +34,6 @@ class Board:
     PIECE_TYPES = [King, GoldGeneral, SilverGeneral, Bishop, Rook]
 
     def __init__(self, init=True):
-        """ Initializes board.
-        """
         self.grid = [[""]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
         self.blockable_pieces = []
         self.players = {"lower" : Player("lower"), "UPPER": Player("UPPER")}
@@ -73,7 +71,7 @@ class Board:
         board_metadata = parse_test_case(filename)
 
         for piece_dict in board_metadata["initialPieces"]:
-            icon, coords = piece_dict["piece"], pos_to_coord(piece_dict["position"])
+            icon, coords = piece_dict["piece"], pos_to_coords(piece_dict["position"])
             piece = Piece.from_icon(icon, coords)
             self.place_piece(piece.player_name, piece, coords)
 
@@ -112,6 +110,24 @@ class Board:
         for name in self.players:
             new_players[name] = self.players[name].copy(piece_to_copy)
         return new_players
+
+    def try_move_piece(self, piece, dst):
+        """ Returns a copy of the board after specified move command.
+        """
+        board_copy = self.copy()
+        piece_copy = board_copy.get_piece(piece.coords)
+        board_copy.move_piece(piece_copy, dst)
+        
+        return board_copy
+
+    def try_drop_piece(self, player, piece, dst):
+        """ Returns a copy of the board after specified drop command.
+        """
+        board_copy = self.copy()
+        piece_copy = self.get_copy_from_captures(piece, self.current_player.captures)
+        board_copy.drop_piece(board_copy.players[player.name], piece_copy, dst)
+
+        return board_copy
 
     def can_promote(self, piece, src, dst):
         """ Check if the piece is eligible for promotion based on its position
@@ -256,7 +272,6 @@ class Board:
         captured_pieces = player.captures
 
         if not piece:
-            print("You have not captured that piece.")
             return False
 
         if type(piece) == Pawn and not self.can_drop_pawn(player, piece, dst):
@@ -338,12 +353,9 @@ class Board:
 
         for piece in pieces:
             for dst in self.get_valid_dsts(piece):
-                board_copy = self.copy()
-                piece_copy = board_copy.get_piece(piece.coords)
-                player_copy = board_copy.players[piece.player_name]
-                
-                board_copy.move_piece(piece_copy, dst)
-                if not board_copy.is_checked(player_copy):
+                board_copy = self.try_move_piece(piece, dst)
+
+                if not board_copy.is_checked(board_copy.players[player.name]):
                     if (piece.icon, piece.coords) not in uncheck_moves:
                         uncheck_moves[(piece.icon, piece.coords)] = []
 
@@ -359,16 +371,14 @@ class Board:
         for piece in player.captures:
             for i in range(Board.BOARD_SIZE):
                 for j in range(Board.BOARD_SIZE):
-                    board_copy = self.copy()
-                    player_copy = board_copy.players[player.name]
-                    piece_copy = self.get_copy_from_captures(piece, player_copy.captures)
-
-                    board_copy.drop_piece(player_copy, piece_copy, (i, j))
-                    if not board_copy.is_checked(player_copy):
+                    dst = (i, j)
+                    board_copy = self.try_drop_piece(player, piece, dst)
+                    
+                    if not board_copy.is_checked(board_copy.players[player.name]):
                         if piece.icon not in uncheck_drops:
                             uncheck_drops[piece.icon] = []
                             
-                        uncheck_drops[piece.icon].append(coords_to_pos((i, j)))
+                        uncheck_drops[piece.icon].append(coords_to_pos(dst))
         
         return uncheck_drops
 
