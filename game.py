@@ -117,8 +117,6 @@ class Game:
                 return False
 
         return self.board.drop_piece(current_player, found_piece, dst)
-
-        return False
     
     def print_state(self):
         """ Prints the state of the board along with metadata at current game iteration.
