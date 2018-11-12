@@ -1,6 +1,7 @@
 import os
 
 BOARD_SIZE = 5
+NUM_PAWNS = 1
 
 def input_to_coords(user_input):
     """ Parse user input into src and dest coordinate pair

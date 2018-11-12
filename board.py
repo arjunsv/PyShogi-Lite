@@ -1,5 +1,5 @@
 from utils import input_to_coords, input_to_commands, stringify_board
-from utils import add_coords, coords_to_pos, pos_to_coords, input_to_drop
+from utils import add_coords, coords_to_pos, pos_to_coords, input_to_drop, NUM_PAWNS
 from utils import parse_test_case, get_moves_from_dict, get_drops_from_dict, BOARD_SIZE
 from pieces import Piece, King, GoldGeneral, SilverGeneral, Bishop, Rook, Pawn
 import copy
@@ -53,16 +53,17 @@ class Board:
 
         max_row = BOARD_SIZE - 1
 
-        for i in range(len(Board.PIECE_TYPES)):
+        for i in range(BOARD_SIZE):
 
-            piece_UPPER = Board.PIECE_TYPES[i]("UPPER", (max_row - i, max_row))
-            piece_lower = Board.PIECE_TYPES[i]("lower", (i, 0))
+            piece_UPPER = Board.PIECE_TYPES[i % len(Board.PIECE_TYPES)]("UPPER", (max_row - i, max_row))
+            piece_lower = Board.PIECE_TYPES[i % len(Board.PIECE_TYPES)]("lower", (i, 0))
 
             self.place_piece("UPPER", piece_UPPER, piece_UPPER.coords)
             self.place_piece("lower", piece_lower, piece_lower.coords)
 
-        self.place_piece("UPPER", Pawn("UPPER", (max_row, max_row - 1)), (max_row, max_row - 1))
-        self.place_piece("lower", Pawn("lower", (0, 1)), (0, 1))
+        for i in range(NUM_PAWNS):
+            self.place_piece("UPPER", Pawn("UPPER", (max_row - i, max_row - 1)), (max_row - i, max_row - 1))
+            self.place_piece("lower", Pawn("lower", (i, 1)), (i, 1))
 
     def init_grid_filemode(self, filename):
         """ Initializes grid from file config as opposed to default config.
