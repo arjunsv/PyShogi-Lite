@@ -8,7 +8,6 @@ import ast
 import copy
 import argparse
 
-BOARD_SIZE = 5
 
 class Player:
 
@@ -16,7 +15,7 @@ class Player:
         """
         """
         self.name = name
-        self.heatmap = [[0]*BOARD_SIZE for i in range(BOARD_SIZE)]
+        self.heatmap = [[0]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
         self.king = None
         self.is_promoted = False
         self.pieces = []
@@ -53,15 +52,34 @@ class Piece:
 
     @property
     def icon(self):
+        """ Property that returns the proper icon depending on the player and is_promoted
+        """
         ret_icon = self._icon
         if self.player_name == "lower":
             ret_icon = self._icon.lower()
         if self.is_promoted:
             ret_icon = "+" + ret_icon
         return ret_icon
+    
+    @staticmethod
+    def from_icon(icon, coords=(-1, -1)):
+        """ Returns a new piece created from a piece icon.
+        """
+        icon_to_piece = {'k': King, 'g': GoldGeneral, 's': SilverGeneral, 
+                         'b': Bishop, 'r': Rook, 'p': Pawn}
+
+        stripped_icon = icon.strip("+")
+        player_name = "UPPER" if stripped_icon.isupper() else "lower"
+        stripped_icon = stripped_icon.lower()
+        piece = icon_to_piece[stripped_icon](player_name, coords)
+
+        if "+" in icon:
+            piece.promote()
+
+        return piece
 
     def copy(self):
-        """ Returns a copy of the piece.
+        """ Returns a copy of the piece with the same id as the original piece.
         """
         piece_type = type(self)
         new_piece = piece_type(self.player_name, self.coords, True)
@@ -76,12 +94,12 @@ class Piece:
         self.unblockable_moves = type(self).unblockable_moves
 
     def __eq__(self, other):
-        """ Equality comparator for pieces.
+        """ Equality comparator for pieces based on unique id.
         """
         return type(self) == type(other) and self.id == other.id
 
     def __hash__(self):
-        """ Hash function for pieces
+        """ Hash function for pieces based on unique id.
         """
         return hash(self.id)
 
@@ -146,7 +164,7 @@ class Bishop(Piece):
 
     def promote(self):
         self.is_promoted = True
-        self.unblockable_moves.extend(King.unblockable_moves)
+        self.unblockable_moves = self.unblockable_moves + King.unblockable_moves
         return True
 
 
@@ -165,7 +183,7 @@ class Rook(Piece):
 
     def promote(self):
         self.is_promoted = True
-        self.unblockable_moves.extend(King.unblockable_moves)
+        self.unblockable_moves = self.unblockable_moves + King.unblockable_moves
         return True
 
 
@@ -185,71 +203,56 @@ class Pawn(Piece):
 
 class Board:
 
-    def __init__(self, filename, copy=False):
+    BOARD_SIZE = 5
+    PIECE_TYPES = [King, GoldGeneral, SilverGeneral, Bishop, Rook]
+
+    def __init__(self, init=True):
         """ Initializes board.
         """
-        self.BOARD_SIZE = 5
         self.grid = [[""]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
         self.blockable_pieces = []
         self.players = {"lower" : Player("lower"), "UPPER": Player("UPPER")}
         self.current_player = self.players["lower"]
-        self.game_over = False
-        self.file_over = False
-        self.last_command = ""
-        self.file_index = 0
 
-        if filename:
-            self.init_grid_filemode(filename)
-        elif not copy:
+        if init:
             self.init_grid()
+    
+    @staticmethod
+    def from_file(filename):
+        board = Board(init=False)
+        file_commands = board.init_grid_filemode(filename)
+        return board, file_commands
 
     def init_grid(self):
-        """ Populates pieces of initial board state.
+        """ Populates pieces of initial (default) MiniShogi board state.
         """
-
-        pieces = [King, GoldGeneral, SilverGeneral, Bishop, Rook]
 
         for i in range(self.BOARD_SIZE):
 
-            piece_UPPER = pieces[i]("UPPER", (4 - i, 4))
-            piece_lower = pieces[i]("lower", (i, 0))
+            piece_UPPER = Board.PIECE_TYPES[i]("UPPER", (4 - i, 4))
+            piece_lower = Board.PIECE_TYPES[i]("lower", (i, 0))
 
-            self.place_piece(self.players["UPPER"], piece_UPPER, piece_UPPER.coords)
-            self.place_piece(self.players["lower"], piece_lower, piece_lower.coords)
+            self.place_piece("UPPER", piece_UPPER, piece_UPPER.coords)
+            self.place_piece("lower", piece_lower, piece_lower.coords)
 
-        self.place_piece(self.players["UPPER"], Pawn("UPPER", (4, 3)), (4, 3))
-        self.place_piece(self.players["lower"], Pawn("lower", (0, 1)), (0, 1))
+        self.place_piece("UPPER", Pawn("UPPER", (4, 3)), (4, 3))
+        self.place_piece("lower", Pawn("lower", (0, 1)), (0, 1))
 
     def init_grid_filemode(self, filename):
         """ Initializes grid from file config as opposed to default config.
         """
-        icon_to_piece = {'k': King, 'g': GoldGeneral, 's': SilverGeneral, 
-                         'b': Bishop, 'r': Rook, 'p': Pawn}
-        filemode_dict = parse_test_case(filename)
-        for piece_dict in filemode_dict["initialPieces"]:
-            icon, pos = piece_dict["piece"], pos_to_coord(piece_dict["position"])
-            stripped_icon = icon.strip("+")
-            player_name = "UPPER" if stripped_icon.isupper() else "lower"
-            stripped_icon = stripped_icon.lower()
-            piece = icon_to_piece[stripped_icon](player_name, pos)
-            if "+" in icon:
-                piece.promote()
-            self.place_piece(self.players[player_name], piece, pos)
+        board_metadata = parse_test_case(filename)
 
-        self.players["UPPER"].captures = [icon_to_piece[i.lower()]("UPPER", (-1, -1)) for i in filemode_dict["upperCaptures"]]
-        self.players["lower"].captures = [icon_to_piece[i.lower()]("lower", (-1, -1)) for i in filemode_dict["lowerCaptures"]]
-        self.filemode_commands = filemode_dict["moves"]
-    
-    def next_file_command(self):
-        """ returns next file command
-        """
-        if self.file_index >= len(self.filemode_commands):
-            self.file_over = True
-            return ""
+        for piece_dict in board_metadata["initialPieces"]:
+            icon, coords = piece_dict["piece"], pos_to_coord(piece_dict["position"])
+            piece = Piece.from_icon(icon, coords)
+            self.place_piece(piece.player_name, piece, coords)
 
-        command = self.filemode_commands[self.file_index]
-        self.file_index += 1
-        return command
+        self.players["UPPER"].captures = [Piece.from_icon(i) for i in board_metadata["upperCaptures"]]
+        self.players["lower"].captures = [Piece.from_icon(i) for i in board_metadata["lowerCaptures"]]
+        file_commands = board_metadata["moves"]
+
+        return file_commands
 
     def copy(self):
         """ Returns a new board object that is a copy of the current instance (self)
@@ -259,10 +262,9 @@ class Board:
         piece_to_copy = {piece : piece.copy() for piece in all_pieces + all_captures}
         piece_to_copy[""] = ""
 
-        new_board = Board("", True)
+        new_board = Board(init=False)
 
         new_board.grid = self.copy_grid(self.grid, piece_to_copy)
-        new_board.BOARD_SIZE = self.BOARD_SIZE
         new_board.players = self.copy_players(piece_to_copy)
         new_board.blockable_pieces = [piece_to_copy[bp] for bp in self.blockable_pieces]
         new_board.current_player = new_board.players[self.current_player.name]
@@ -282,37 +284,6 @@ class Board:
             new_players[name] = self.players[name].copy(piece_to_copy)
         return new_players
 
-    def execute_input(self, user_input):
-        if not self.file_over:
-            self.last_command = user_input
-        command, promote = input_to_commands(user_input)
-
-        # Execute move command
-        if command == "move":
-            return self.execute_move(user_input, promote)
-
-        elif command == "drop":
-            return self.execute_drop(user_input)
-
-        return False
-
-    def execute_move(self, user_input, promote):
-        src, dst = input_to_coords(user_input)
-        piece = self.get_piece(src)
-
-        if promote and self.can_promote(piece, piece.coords, dst):
-            if self.move_piece(piece, dst):
-                return piece.promote()
-
-        elif type(piece) == Pawn and self.can_promote(piece, piece.coords, dst):
-            if self.move_piece(piece, dst):
-                return piece.promote()
-
-        elif not promote:
-            return self.move_piece(piece, dst)
-
-        return False
-
     def can_promote(self, piece, src, dst):
         """ Check if the piece is eligible for promotion based on its position
         """
@@ -322,13 +293,6 @@ class Board:
             return dst[1] == 0 or src[1] == 0
         else:
             return dst[1] == 4 or src[1] == 4
-
-    def execute_drop(self, user_input):
-        icon, dst = input_to_drop(user_input)
-        for piece in self.current_player.captures:
-            if piece.icon.lower() == icon.lower():
-                return self.drop_piece(self.current_player, piece, pos_to_coord(dst))
-        return False
 
     def get_valid_dsts(self, piece, count_self=False):
         """ returns all valid destinations a piece can move to.
@@ -341,7 +305,7 @@ class Board:
             if self.in_bounds(possible_dst):
                 if not self.is_players_piece(self.players[piece.player_name], possible_dst) or count_self:
                     # Can't move King into check
-                    opp_heatmap = self.get_other_player(self.current_player).heatmap
+                    opp_heatmap = self.players[self.get_other_player_name(self.current_player.name)].heatmap
                     if type(piece) == King and opp_heatmap[possible_dst[0]][possible_dst[1]] > 0:
                         pass
                     else:
@@ -360,10 +324,10 @@ class Board:
 
         return valid_dsts
 
-    def get_other_player(self, player):
-        """ Returns the player who is not player.
+    def get_other_player_name(self, player_name):
+        """ Returns the name of the player who is not player passed in as argument.
         """
-        return self.players["UPPER"] if player.name == "lower" else self.players["lower"]
+        return "UPPER" if player_name == "lower" else "lower"
 
     def is_players_piece(self, player, coords):
         return self.get_piece(coords) and self.get_piece(coords).player_name == player.name
@@ -378,9 +342,10 @@ class Board:
     def in_bounds(self, dst):
         return 0 <= dst[0] < 5 and 0 <= dst[1] < 5
 
-    def place_piece(self, player, piece, coords):
+    def place_piece(self, player_name, piece, coords):
         """ Places Piece at position coords on this Board's grid
         """
+        player = self.players[player_name]
         piece.coords = coords
 
         if type(piece) == King:
@@ -435,11 +400,11 @@ class Board:
             if self.is_opponent_piece(self.get_piece(dst)):
                 self.capture_piece(self.get_piece(dst))
                 self.remove_piece(piece)
-                self.place_piece(self.current_player, piece, dst)
+                self.place_piece(self.current_player.name, piece, dst)
 
             elif not self.get_piece(dst):
                 self.remove_piece(piece)
-                self.place_piece(self.current_player, piece, dst)
+                self.place_piece(self.current_player.name, piece, dst)
 
             else:
                 return False
@@ -452,7 +417,7 @@ class Board:
         """ adds captured piece to the list of the current player
         """
         self.remove_piece(piece)
-        capture_player = self.get_other_player(self.players[piece.player_name])
+        capture_player = self.players[self.get_other_player_name(piece.player_name)]
         piece.demote()
         piece.player_name = capture_player.name
         capture_player.captures.append(piece)
@@ -475,14 +440,14 @@ class Board:
                 return False
 
             # checkmate condition here
-            board_copy = board.copy()
+            board_copy = self.copy()
             for captured_piece in board_copy.current_player.captures:
                 if captured_piece == piece:
                     copy_piece = piece
 
-            board_copy.place_piece(board_copy.current_player, copy_piece, dst)
+            board_copy.place_piece(board_copy.current_player.name, copy_piece, dst)
             board_copy.current_player.captures.remove(copy_piece)
-            other_player = board_copy.get_other_player(board_copy.players[piece.player_name])
+            other_player = board_copy.players[board_copy.get_other_player_name(piece.player_name)]
             if board_copy.is_checkmated(other_player, False):
                 return False
 
@@ -491,7 +456,7 @@ class Board:
                 if type(p) == Pawn and dst[0] == p.coords[0]:
                     return False
 
-        self.place_piece(self.current_player, piece, dst)
+        self.place_piece(self.current_player.name, piece, dst)
         captured_pieces.remove(piece)
         return True
 
@@ -512,7 +477,7 @@ class Board:
     def is_checked(self, player):
         """ Returns whether or not player is in check by other_player.
         """
-        other_player = self.get_other_player(player)
+        other_player = self.players[self.get_other_player_name(player.name)]
         other_heatmap = other_player.heatmap
         king_coords = player.king.coords
 
@@ -544,8 +509,8 @@ class Board:
         uncheck_drops = {}
 
         for piece in player.captures:
-            for i in range(BOARD_SIZE):
-                for j in range(BOARD_SIZE):
+            for i in range(self.BOARD_SIZE):
+                for j in range(self.BOARD_SIZE):
                     board_copy = self.copy()
                     for captured_piece in board_copy.players[player.name].captures:
                         if captured_piece == piece:
@@ -570,59 +535,170 @@ class Board:
         else:
             return not self.get_uncheck_moves(player)
     
+    def __str__(self):
+        return stringify_board(self.grid)
+
+
+class Game:
+
+    def __init__(self, filename=None):
+        """
+        """
+        if filename:
+            self.file_index = 0
+            self.is_filemode = True
+            self.board, self.file_commands = Board.from_file(args.filename[0])
+        else:
+            self.is_filemode = False
+            self.board = Board()
+        self.last_command = ""
+        self.game_over = False
+        self.file_over = False
+
+
+    def get_input(self):
+        """ Grabs next command. 
+        """
+        if self.is_filemode:
+            return self.next_file_command()
+        else:
+            return input()
+
+    def next_file_command(self):
+        """ returns next file command.
+        """
+        if self.file_index >= len(self.file_commands):
+            self.file_over = True
+            return ""
+
+        command = self.file_commands[self.file_index]
+        self.file_index += 1
+        return command
+    
+    def execute_input(self, user_input):
+        if not self.file_over:
+            self.last_command = user_input
+        command, promote = input_to_commands(user_input)
+
+        # Execute move command
+        if command == "move":
+            return self.execute_move(user_input, promote)
+
+        elif command == "drop":
+            return self.execute_drop(user_input)
+
+        return False
+
+    def execute_move(self, user_input, promote):
+        src, dst = input_to_coords(user_input)
+        piece = self.board.get_piece(src)
+
+        if promote and self.board.can_promote(piece, piece.coords, dst):
+            if self.board.move_piece(piece, dst):
+                return piece.promote()
+
+        elif type(piece) == Pawn and self.board.can_promote(piece, piece.coords, dst):
+            if self.board.move_piece(piece, dst):
+                return piece.promote()
+
+        elif not promote:
+            return self.board.move_piece(piece, dst)
+
+        return False
+    
+    def execute_drop(self, user_input):
+        icon, dst = input_to_drop(user_input)
+        for piece in self.board.current_player.captures:
+            if piece.icon.lower() == icon.lower():
+                return self.board.drop_piece(self.board.current_player, piece, pos_to_coord(dst))
+        return False
+    
+            
+    def play(self):
+        """ Plays a game of shogi.
+        """
+        while not self.game_over:
+            if not self.is_filemode:
+                self.print_state()
+
+            user_input = self.get_input()
+            if self.execute_input(user_input):
+                if not self.is_filemode:
+                    print(self.board.current_player.name + " player action: " + self.last_command.strip()) 
+                self.board.switch_current_player()
+                self.board.current_player.num_moves += 1
+                if not self.is_filemode:
+                    print(self.board)
+            
+            elif self.file_over:
+                break
+
+            else:
+                self.board.switch_current_player()
+                self.winner = self.board.current_player.name
+                self.winner_reason = "Illegal move."
+                self.game_over = True
+        
+        self.display_game_over()
+    
     def print_metadata(self):
-        print("Captures UPPER: " + " ".join([piece.icon for piece in self.players["UPPER"].captures]))
-        print("Captures lower: " + " ".join([piece.icon for piece in self.players["lower"].captures]))
+        print("Captures UPPER: " + " ".join([piece.icon for piece in self.board.players["UPPER"].captures]))
+        print("Captures lower: " + " ".join([piece.icon for piece in self.board.players["lower"].captures]))
         print("")
         
 
-        if self.is_checkmated(self.players["UPPER"]):
-            board.winner = "lower"
-            board.winner_reason = "Checkmate."
-            board.game_over = True
+        if self.board.is_checkmated(self.board.players["UPPER"]):
+            self.winner = "lower"
+            self.winner_reason = "Checkmate."
+            self.game_over = True
 
-        if self.is_checkmated(self.players["lower"]):
-            board.winner = "UPPER"
-            board.winner_reason = "Checkmate."
-            board.game_over = True
+        if self.board.is_checkmated(self.board.players["lower"]):
+            self.winner = "UPPER"
+            self.winner_reason = "Checkmate."
+            self.game_over = True
 
-        if not self.game_over and self.current_player.num_moves > 199:
+        if not self.game_over and self.board.current_player.num_moves > 199:
             print("Tie game.  Too many moves.")
-            board.winner = ""
-            board.winner_reason = ""
-            board.game_over = True
+            self.winner = ""
+            self.winner_reason = ""
+            self.game_over = True
 
-        if not self.game_over and self.is_checked(self.players["UPPER"]):
+        if not self.game_over and self.board.is_checked(self.board.players["UPPER"]):
             print("UPPER player is in check!")
             print("Available moves:")
-            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["UPPER"]))
-            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["UPPER"]))
+            moves = get_moves_from_dict(self.board.get_uncheck_moves(self.board.players["UPPER"]))
+            drops = get_drops_from_dict(self.board.get_uncheck_drops(self.board.players["UPPER"]))
             for drop in sorted(drops):
                 print(drop)
             
             for move in sorted(moves):
                 print(move)
 
-        if not self.game_over and self.is_checked(self.players["lower"]):
+        if not self.game_over and self.board.is_checked(self.board.players["lower"]):
             print("lower player is in check!")
             print("Available moves:")
-            moves = get_moves_from_dict(self.get_uncheck_moves(self.players["lower"]))
-            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["lower"]))   
+            moves = get_moves_from_dict(self.board.get_uncheck_moves(self.board.players["lower"]))
+            drops = get_drops_from_dict(self.board.get_uncheck_drops(self.board.players["lower"]))   
             for drop in sorted(drops):
                 print(drop)
             
             for move in sorted(moves):
                 print(move)
 
-        if not board.game_over:
-            print(self.current_player.name + "> ", end="")
+        if not self.game_over:
+            print(self.board.current_player.name + "> ", end="")
 
     def print_state(self):
         """ Prints state of the game.
         """
-        print(self.get_other_player(self.players[self.current_player.name]).name + " player action: " + board.last_command.strip()) 
-        print(stringify_board(self.grid))
+        print(self.board.get_other_player_name(self.board.current_player.name) + " player action: " + self.last_command.strip()) 
+        print(self.board)
         self.print_metadata()
+    
+    def display_game_over(self):
+        self.print_state()
+        if self.game_over and self.winner and self.winner_reason:
+            print(self.winner + " player wins.  " + self.winner_reason)
         
 
 if __name__ == "__main__":
@@ -631,39 +707,5 @@ if __name__ == "__main__":
     parser.add_argument('-f', nargs=1, dest="filename", required=False, help='runs MiniShogi in filemode.')
     args = parser.parse_args()
 
-    if args.filename:
-        filemode = True
-        board = Board(args.filename[0])
-        get_input = board.next_file_command
-    else:
-        filemode = False
-        board = Board("")
-        get_input = input
-
-    while not board.game_over:
-
-        if not filemode:
-            board.print_state()
-
-        user_input = get_input()
-        if board.execute_input(user_input):
-            if not filemode:
-                print(board.current_player.name + " player action: " + board.last_command.strip()) 
-            board.switch_current_player()
-            board.current_player.num_moves += 1
-            if not filemode:
-                print(stringify_board(board.grid))
-        
-        elif board.file_over:
-            break
-
-        else:
-            board.switch_current_player()
-            board.winner = board.current_player.name
-            board.winner_reason = "Illegal move."
-            board.game_over = True
-
-    if filemode:
-        board.print_state()
-        if board.game_over and board.winner and board.winner_reason:
-            print(board.winner + " player wins.  " + board.winner_reason)
+    game = Game(args.filename[0])
+    game.play()
