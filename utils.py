@@ -63,7 +63,7 @@ def _stringify_square(sq):
     if type(sq) is int:
         sq = str(sq) 
 
-    elif type(sq) is not str and type(sq) or len(sq) > 2:
+    elif type(sq) is not str:
         sq = sq.icon
 
     if len(sq) == 0:
