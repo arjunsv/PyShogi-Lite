@@ -314,7 +314,7 @@ class Board:
         Updates the player's heatmap upon placing the piece.
 
         A heatmap is a 2-D grid of ints where each cell's value
-        corresponds to how many of the players' pieces can reach
+        represents how many of the players' pieces can reach
         this cell.
         """
         curr_heatmap = self.players[piece.player_name].heatmap
@@ -346,7 +346,7 @@ class Board:
             return not self.get_uncheck_moves(player)
 
     def get_uncheck_moves(self, player):
-        """ If you are in check, returns the available moves to get you out of check.
+        """ Returns available moves to get  out of check.
         """
         uncheck_moves = {}
         pieces = player.pieces
@@ -364,7 +364,7 @@ class Board:
         return uncheck_moves
     
     def get_uncheck_drops(self, player):
-        """ If you are in check, returns the available drops to get you out of check.
+        """ Returns available drops to get out of check.
         """
         uncheck_drops = {}
 
@@ -373,7 +373,7 @@ class Board:
                 for j in range(Board.BOARD_SIZE):
                     dst = (i, j)
                     board_copy = self.try_drop_piece(player, piece, dst)
-                    
+
                     if not board_copy.is_checked(board_copy.players[player.name]):
                         if piece.icon not in uncheck_drops:
                             uncheck_drops[piece.icon] = []
