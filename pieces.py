@@ -1,3 +1,5 @@
+from utils import BOARD_SIZE
+
 class Piece:
 
     num_pieces = 0
@@ -113,10 +115,10 @@ class SilverGeneral(Piece):
 
 class Bishop(Piece):
 
-    up_right_moves = [(1, 1), (2, 2), (3, 3), (4, 4)]
-    down_right_moves = [(1, -1), (2, -2), (3, -3), (4, -4)]
-    down_left_moves = [(-1, -1), (-2, -2), (-3, -3), (-4, -4)]
-    up_left_moves = [(-1, 1), (-2, 2), (-3, 3), (-4, 4)]
+    up_right_moves = [(i, i) for i in range(1, BOARD_SIZE)]
+    down_right_moves = [(i, -i) for i in range(1, BOARD_SIZE)]
+    down_left_moves = [(-i, -i) for i in range(1, BOARD_SIZE)]
+    up_left_moves = [(-i, i) for i in range(1, BOARD_SIZE)]
 
     blockable_moves_sets = [up_right_moves, down_left_moves, down_right_moves, up_left_moves]
     unblockable_moves = []
@@ -132,10 +134,10 @@ class Bishop(Piece):
 
 class Rook(Piece):
 
-    up_moves = [(0, 1), (0, 2), (0, 3), (0, 4)]
-    right_moves = [(1, 0), (2, 0), (3, 0), (4, 0)]
-    down_moves = [(0, -1), (0, -2), (0, -3), (0, -4)]
-    left_moves = [(-1, 0), (-2, 0), (-3, 0), (-4, 0)]
+    up_moves = [(0, i) for i in range(1, BOARD_SIZE)]
+    right_moves = [(i, 0) for i in range(1, BOARD_SIZE)]
+    down_moves = [(0, -i) for i in range(1, BOARD_SIZE)]
+    left_moves = [(-i, 0) for i in range(1, BOARD_SIZE)]
 
     unblockable_moves = []
     blockable_moves_sets = [up_moves, right_moves, down_moves, left_moves]

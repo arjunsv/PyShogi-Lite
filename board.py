@@ -1,6 +1,6 @@
 from utils import input_to_coords, input_to_commands, stringify_board
 from utils import add_coords, coords_to_pos, pos_to_coords, input_to_drop
-from utils import parse_test_case, get_moves_from_dict, get_drops_from_dict
+from utils import parse_test_case, get_moves_from_dict, get_drops_from_dict, BOARD_SIZE
 from pieces import Piece, King, GoldGeneral, SilverGeneral, Bishop, Rook, Pawn
 import copy
 
@@ -9,7 +9,7 @@ class Player:
 
     def __init__(self, name):
         self.name = name
-        self.heatmap = [[0]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
+        self.heatmap = [[0]*BOARD_SIZE for i in range(BOARD_SIZE)]
         self.king = None
         self.is_promoted = False
         self.pieces = []
@@ -30,11 +30,10 @@ class Player:
 
 class Board:
 
-    BOARD_SIZE = 5
     PIECE_TYPES = [King, GoldGeneral, SilverGeneral, Bishop, Rook]
 
     def __init__(self, init=True):
-        self.grid = [[""]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
+        self.grid = [[""]*BOARD_SIZE for i in range(BOARD_SIZE)]
         self.blockable_pieces = []
         self.players = {"lower" : Player("lower"), "UPPER": Player("UPPER")}
         self.current_player = self.players["lower"]
@@ -52,7 +51,7 @@ class Board:
         """ Populates pieces of initial (default) MiniShogi board state.
         """
 
-        max_row = Board.BOARD_SIZE - 1
+        max_row = BOARD_SIZE - 1
 
         for i in range(len(Board.PIECE_TYPES)):
 
@@ -99,9 +98,9 @@ class Board:
         return new_board
 
     def copy_grid(self, grid, piece_to_copy):
-        new_grid = [[""]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
-        for i in range(Board.BOARD_SIZE):
-            for j in range(Board.BOARD_SIZE):
+        new_grid = [[""]*BOARD_SIZE for i in range(BOARD_SIZE)]
+        for i in range(BOARD_SIZE):
+            for j in range(BOARD_SIZE):
                 new_grid[i][j] = piece_to_copy[grid[i][j]]
         return new_grid
 
@@ -191,7 +190,7 @@ class Board:
         return False
     
     def in_bounds(self, dst):
-        return 0 <= dst[0] < 5 and 0 <= dst[1] < 5
+        return 0 <= dst[0] < BOARD_SIZE and 0 <= dst[1] < BOARD_SIZE
 
     def place_piece(self, player_name, piece, coords):
         piece.coords = coords
@@ -369,8 +368,8 @@ class Board:
         uncheck_drops = {}
 
         for piece in player.captures:
-            for i in range(Board.BOARD_SIZE):
-                for j in range(Board.BOARD_SIZE):
+            for i in range(BOARD_SIZE):
+                for j in range(BOARD_SIZE):
                     dst = (i, j)
                     board_copy = self.try_drop_piece(player, piece, dst)
 
