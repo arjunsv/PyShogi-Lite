@@ -80,6 +80,9 @@ class Game:
         src, dst = input_to_coords(user_input)
         piece = self.board.get_piece(src)
 
+        if not piece:
+        	return False
+
         if promote and self.board.can_promote(piece, piece.coords, dst):
             if self.board.move_piece(piece, dst):
                 return piece.promote()
