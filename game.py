@@ -36,9 +36,7 @@ class Game:
             if self.execute_input(user_input):
                 self.board.switch_current_player()
                 self.board.current_player.num_moves += 1
-                if not self.is_filemode:
-                    self.print_state()
-
+ 
             elif not self.file_over:
                 self.board.switch_current_player()
                 self.winner = self.board.current_player.name
