@@ -11,7 +11,7 @@ def input_to_coords(user_input):
 def input_to_drop(user_input):
     split_input = user_input.split(" ")
     piece, dst = split_input[1], split_input[2]
-    return piece, dst
+    return piece, pos_to_coord(dst)
 
 def input_to_commands(user_input):
     """ Parse user input into move or drop command and promote command

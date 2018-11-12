@@ -81,7 +81,14 @@ class Game:
         piece = self.board.get_piece(src)
 
         if not piece:
-        	return False
+            return False
+
+        if self.board.is_checked(self.board.current_player):
+            board_copy = self.board.copy()
+            piece_copy = board_copy.get_piece(piece.coords)
+            board_copy.move_piece(piece_copy, dst)
+            if board_copy.is_checked(board_copy.current_player):
+                return False
 
         if promote and self.board.can_promote(piece, piece.coords, dst):
             if self.board.move_piece(piece, dst):
@@ -98,9 +105,18 @@ class Game:
     
     def execute_drop(self, user_input):
         icon, dst = input_to_drop(user_input)
+
         for piece in self.board.current_player.captures:
             if piece.icon.lower() == icon.lower():
-                return self.board.drop_piece(self.board.current_player, piece, pos_to_coord(dst))
+                if self.board.is_checked(self.board.current_player):
+                    board_copy = self.board.copy()
+                    piece_copy = self.board.get_copy_from_captures(piece, self.board.current_player.captures)
+                    board_copy.drop_piece(board_copy.current_player, piece_copy, dst)
+
+                    if board_copy.is_checked(board_copy.current_player):
+                        return False
+
+                return self.board.drop_piece(self.board.current_player, piece, dst)
 
         return False
     
