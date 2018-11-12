@@ -82,7 +82,7 @@ def stringify_board(board):
         for col in range(0, len(board[row])):
             s += _stringify_square(board[col][row])
         s += os.linesep
-    s += '    a  b  c  d  e' + os.linesep
+    s += '    ' + '  '.join([chr(ord('a') + i) for i in range(len(board))]) + os.linesep
 
     return s
 
