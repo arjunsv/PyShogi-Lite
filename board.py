@@ -36,7 +36,7 @@ class Board:
     def __init__(self, init=True):
         """ Initializes board.
         """
-        self.grid = [[""]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
+        self.grid = [[""]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
         self.blockable_pieces = []
         self.players = {"lower" : Player("lower"), "UPPER": Player("UPPER")}
         self.current_player = self.players["lower"]
@@ -54,15 +54,17 @@ class Board:
         """ Populates pieces of initial (default) MiniShogi board state.
         """
 
-        for i in range(self.BOARD_SIZE):
+        max_row = Board.BOARD_SIZE - 1
 
-            piece_UPPER = Board.PIECE_TYPES[i]("UPPER", (4 - i, 4))
+        for i in range(len(Board.PIECE_TYPES)):
+
+            piece_UPPER = Board.PIECE_TYPES[i]("UPPER", (max_row - i, max_row))
             piece_lower = Board.PIECE_TYPES[i]("lower", (i, 0))
 
             self.place_piece("UPPER", piece_UPPER, piece_UPPER.coords)
             self.place_piece("lower", piece_lower, piece_lower.coords)
 
-        self.place_piece("UPPER", Pawn("UPPER", (4, 3)), (4, 3))
+        self.place_piece("UPPER", Pawn("UPPER", (max_row, max_row - 1)), (max_row, max_row - 1))
         self.place_piece("lower", Pawn("lower", (0, 1)), (0, 1))
 
     def init_grid_filemode(self, filename):
@@ -99,9 +101,9 @@ class Board:
         return new_board
 
     def copy_grid(self, grid, piece_to_copy):
-        new_grid = [[""]*self.BOARD_SIZE for i in range(self.BOARD_SIZE)]
-        for i in range(self.BOARD_SIZE):
-            for j in range(self.BOARD_SIZE):
+        new_grid = [[""]*Board.BOARD_SIZE for i in range(Board.BOARD_SIZE)]
+        for i in range(Board.BOARD_SIZE):
+            for j in range(Board.BOARD_SIZE):
                 new_grid[i][j] = piece_to_copy[grid[i][j]]
         return new_grid
 
@@ -355,8 +357,8 @@ class Board:
         uncheck_drops = {}
 
         for piece in player.captures:
-            for i in range(self.BOARD_SIZE):
-                for j in range(self.BOARD_SIZE):
+            for i in range(Board.BOARD_SIZE):
+                for j in range(Board.BOARD_SIZE):
                     board_copy = self.copy()
                     player_copy = board_copy.players[player.name]
                     piece_copy = self.get_copy_from_captures(piece, player_copy.captures)
