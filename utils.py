@@ -54,7 +54,7 @@ def get_drops_from_dict(drops_dict):
     for icon in drops_dict:
         for dst in drops_dict[icon]:
             drop_string = "drop "
-            drop_string += icon + " "
+            drop_string += icon.lower() + " "
             drop_string += dst
             drops.append(drop_string)
     return drops

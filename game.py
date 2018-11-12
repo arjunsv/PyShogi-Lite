@@ -37,10 +37,15 @@ class Player:
 
 class Piece:
 
-    def __init__(self, player_name, coords, icon, blockable):
+    num_pieces = 0
+
+    def __init__(self, player_name, coords, icon, blockable, copy):
         """ Initializes piece.
         """
         self.player_name = player_name
+        if not copy:
+            self.id = Piece.num_pieces
+            Piece.num_pieces += 1
         self.coords = coords
         self._icon = icon
         self.is_promoted = False
@@ -59,7 +64,8 @@ class Piece:
         """ Returns a copy of the piece.
         """
         piece_type = type(self)
-        new_piece = piece_type(self.player_name, self.coords)
+        new_piece = piece_type(self.player_name, self.coords, True)
+        new_piece.id = self.id
         return new_piece
 
     def demote(self):
@@ -72,13 +78,12 @@ class Piece:
     def __eq__(self, other):
         """ Equality comparator for pieces.
         """
-        return type(self) == type(other) and self.player_name == other.player_name and \
-               self.blockable == other.blockable
+        return type(self) == type(other) and self.id == other.id
 
     def __hash__(self):
         """ Hash function for pieces
         """
-        return hash((self.player_name, self.icon, self.blockable))
+        return hash(self.id)
 
 
 class King(Piece):
@@ -89,8 +94,8 @@ class King(Piece):
                          (1, -1), (0, -1), 
                          (-1, -1), (-1, 0)]
 
-    def __init__(self, player, coords):
-        super().__init__(player, coords, "K", False)
+    def __init__(self, player, coords, copy=False):
+        super().__init__(player, coords, "K", False, copy)
 
     def promote(self):
         return False
@@ -103,8 +108,8 @@ class GoldGeneral(Piece):
                          (1, 1), (1, 0), 
                          (0, -1), (-1, 0)]
 
-    def __init__(self, player, coords):
-        super().__init__(player, coords, "G", False)
+    def __init__(self, player, coords, copy=False):
+        super().__init__(player, coords, "G", False, copy)
 
     def promote(self):
         return False
@@ -117,8 +122,8 @@ class SilverGeneral(Piece):
                          (1, 1), (1, -1), 
                          (-1, -1)]
 
-    def __init__(self, player, coords):
-        super().__init__(player, coords, "S", False)
+    def __init__(self, player, coords, copy=False):
+        super().__init__(player, coords, "S", False, copy)
 
     def promote(self):
         self.is_promoted = True
@@ -136,8 +141,8 @@ class Bishop(Piece):
     blockable_moves_sets = [up_right_moves, down_left_moves, down_right_moves, up_left_moves]
     unblockable_moves = []
 
-    def __init__(self, player, coords):
-        super().__init__(player, coords, "B", True)
+    def __init__(self, player, coords, copy=False):
+        super().__init__(player, coords, "B", True, copy)
 
     def promote(self):
         self.is_promoted = True
@@ -155,8 +160,8 @@ class Rook(Piece):
     unblockable_moves = []
     blockable_moves_sets = [up_moves, right_moves, down_moves, left_moves]
 
-    def __init__(self, player, coords):
-        super().__init__(player, coords, "R", True)
+    def __init__(self, player, coords, copy=False):
+        super().__init__(player, coords, "R", True, copy)
 
     def promote(self):
         self.is_promoted = True
@@ -169,8 +174,8 @@ class Pawn(Piece):
     unblockable_moves = [(0, 1)]
     blockable_moves_sets = []
 
-    def __init__(self, player, coords):
-        super().__init__(player, coords, "P", False)
+    def __init__(self, player, coords, copy=False):
+        super().__init__(player, coords, "P", False, copy)
 
     def promote(self):
         self.is_promoted = True
@@ -298,6 +303,11 @@ class Board:
         if promote and self.can_promote(piece, piece.coords, dst):
             if self.move_piece(piece, dst):
                 return piece.promote()
+
+        elif type(piece) == Pawn and self.can_promote(piece, piece.coords, dst):
+            if self.move_piece(piece, dst):
+                return piece.promote()
+
         elif not promote:
             return self.move_piece(piece, dst)
 
@@ -472,7 +482,8 @@ class Board:
 
             board_copy.place_piece(board_copy.current_player, copy_piece, dst)
             board_copy.current_player.captures.remove(copy_piece)
-            if board_copy.is_checkmated(self.players[copy_piece.player_name], False):
+            other_player = board_copy.get_other_player(board_copy.players[piece.player_name])
+            if board_copy.is_checkmated(other_player, False):
                 return False
 
             # two unpromoted pawns in same column condition here
@@ -586,22 +597,22 @@ class Board:
             print("Available moves:")
             moves = get_moves_from_dict(self.get_uncheck_moves(self.players["UPPER"]))
             drops = get_drops_from_dict(self.get_uncheck_drops(self.players["UPPER"]))
-            for move in moves:
-                print(move)
-
-            for drop in drops:
+            for drop in sorted(drops):
                 print(drop)
+            
+            for move in sorted(moves):
+                print(move)
 
         if not self.game_over and self.is_checked(self.players["lower"]):
             print("lower player is in check!")
             print("Available moves:")
             moves = get_moves_from_dict(self.get_uncheck_moves(self.players["lower"]))
-            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["lower"]))
-            for move in moves:
-                print(move)
-            
-            for drop in drops:
+            drops = get_drops_from_dict(self.get_uncheck_drops(self.players["lower"]))   
+            for drop in sorted(drops):
                 print(drop)
+            
+            for move in sorted(moves):
+                print(move)
 
         if not board.game_over:
             print(self.current_player.name + "> ", end="")
